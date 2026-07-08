@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/db';
 import { pusherServer } from '@/lib/pusher';
-import { CreateGameReducer } from 'boardgame.io/core';
+import { CreateGameReducer } from 'boardgame.io/internal';
 import { JassGame } from '@/game/logic';
 
 // Create the boardgame.io reducer for our game

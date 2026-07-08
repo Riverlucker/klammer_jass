@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/db';
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const gameRecord = await prisma.game.findUnique({
       where: { id },
@@ -15,8 +15,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
     return NextResponse.json({ success: true, state: gameRecord.state });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching game:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Internal server error', stack: error.stack }, { status: 500 });
   }
 }

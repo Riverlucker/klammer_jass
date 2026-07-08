@@ -14,6 +14,7 @@ export const JassGame: Game<JassState> = {
     revealedCard: null,
     dealer: '0', // In a real game, this alternates or follows the winner of the hand
     vorne: '1',
+    readyPlayers: [],
     scores: { '0': 0, '1': 0 },
     handScores: { '0': 0, '1': 0 },
     cube: { value: 1, holder: null },
@@ -28,22 +29,41 @@ export const JassGame: Game<JassState> = {
   }),
 
   phases: {
-    deal: {
+    waitingRoom: {
       start: true,
-      onBegin: (G, ctx) => {
-        G.deck = ctx.random!.Shuffle(G.deck);
+      moves: {
+        setReady: JassMoves.setReady,
+      },
+      turn: {
+        activePlayers: { all: 'waiting' },
+      },
+      next: 'deal',
+    },
+    deal: {
+      onBegin: ({ G, random, events }) => {
+        const shuffle = random?.Shuffle || function(arr: any[]) {
+          // Fallback Fisher-Yates shuffle if plugin is missing during InitializeGame
+          const result = [...arr];
+          for (let i = result.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [result[i], result[j]] = [result[j], result[i]];
+          }
+          return result;
+        };
+
+        G.deck = shuffle(G.deck);
         G.hands['0'] = G.deck.splice(0, 6);
         G.hands['1'] = G.deck.splice(0, 6);
         G.revealedCard = G.deck.splice(0, 1)[0];
-        ctx.events?.endPhase();
+        events.endPhase();
       },
       next: 'trumpSelection',
     },
     trumpSelection: {
       turn: {
         order: {
-          first: (G, ctx) => Number(G.vorne),
-          next: (G, ctx) => (ctx.playOrderPos + 1) % ctx.numPlayers,
+          first: ({ G }) => Number(G.vorne),
+          next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.numPlayers,
         }
       },
       moves: {
@@ -57,19 +77,14 @@ export const JassGame: Game<JassState> = {
         acceptCube: JassMoves.acceptCube,
         declineCube: JassMoves.declineCube,
       },
-      next: 'melding',
-    },
-    melding: {
-      moves: {
-        playCardAndMeld: PlayMoves.playCardAndMeld,
-        replyToMeld: PlayMoves.replyToMeld,
-        declareMeldHeight: PlayMoves.declareMeldHeight,
-      },
       next: 'playing',
     },
     playing: {
       moves: {
         playCard: PlayMoves.playCard,
+        doubleCube: JassMoves.doubleCube,
+        acceptCube: JassMoves.acceptCube,
+        declineCube: JassMoves.declineCube,
       },
     }
   }

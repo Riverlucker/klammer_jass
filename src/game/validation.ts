@@ -102,9 +102,59 @@ export function isMeldBetter(meldA: Meld, meldB: Meld, trumpSuit: Suit): boolean
   if (isATrump && !isBTrump) return true;
   if (!isATrump && isBTrump) return false;
 
-  // Completely equal (impossible in 2-player with 32 cards since only 1 of each card exists, 
-  // but if it happened across different suits, the first announced wins, which we default to true if A is first).
-  // Actually, A and B are different suits if they have the same rank and neither is trump.
-  // The rules state "gleich-hohe Fünfzig und zuerst genannte Fünfzig schlägt gleich-hohe nicht-Trumpf Fünfzig"
-  return true; // We assume meldA was announced first (by 'vorne')
+  // Completely equal
+  return true; 
+}
+
+// Find the highest card of the best meld of a given type in a hand.
+// Returns null if the hand does not contain such a meld.
+export function getBestMeldHighestCard(hand: Card[], type: 'Terz' | 'Fünfzig', trumpSuit: Suit): Card | null {
+  const suits: Suit[] = ['Spades', 'Hearts', 'Diamonds', 'Clubs'];
+  let bestHighestCard: Card | null = null;
+  const requiredLength = type === 'Terz' ? 3 : 4;
+
+  for (const suit of suits) {
+    const suitCards = hand.filter(c => c.suit === suit);
+    if (suitCards.length < requiredLength) continue;
+
+    // Sort by rank index
+    const sorted = suitCards.sort((a, b) => MELD_ORDER.indexOf(a.rank) - MELD_ORDER.indexOf(b.rank));
+    
+    // Find longest sequence
+    let currentSeq = 1;
+    let highestInSeq = sorted[0];
+
+    for (let i = 1; i < sorted.length; i++) {
+      if (MELD_ORDER.indexOf(sorted[i].rank) === MELD_ORDER.indexOf(sorted[i - 1].rank) + 1) {
+        currentSeq++;
+        highestInSeq = sorted[i];
+        if (currentSeq >= requiredLength) {
+           // We found a valid sequence
+           if (!bestHighestCard) {
+             bestHighestCard = highestInSeq;
+           } else {
+             // Compare with current best
+             const isNewTrump = highestInSeq.suit === trumpSuit;
+             const isBestTrump = bestHighestCard.suit === trumpSuit;
+             const rankNew = MELD_ORDER.indexOf(highestInSeq.rank);
+             const rankBest = MELD_ORDER.indexOf(bestHighestCard.rank);
+
+             if (rankNew > rankBest || (rankNew === rankBest && isNewTrump && !isBestTrump)) {
+                bestHighestCard = highestInSeq;
+             }
+           }
+        }
+      } else {
+        currentSeq = 1;
+        highestInSeq = sorted[i];
+      }
+    }
+  }
+
+  return bestHighestCard;
+}
+
+export function hasBella(hand: Card[], trumpSuit: Suit): boolean {
+  return hand.some(c => c.suit === trumpSuit && c.rank === 'K') && 
+         hand.some(c => c.suit === trumpSuit && c.rank === 'Q');
 }

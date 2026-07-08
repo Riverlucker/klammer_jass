@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/db';
-import { Client } from 'boardgame.io/client';
+import { InitializeGame } from 'boardgame.io/internal';
 import { JassGame } from '@/game/logic';
 
 export async function POST(req: Request) {
@@ -8,12 +8,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { targetScore, schneiderRule, cubeEnabled } = body;
 
-    // 1. Create a dummy client just to get the initial state from setup()
-    // boardgame.io creates the initial state internally when a client starts
-    const client = Client({ game: JassGame, numPlayers: 2 });
-    client.start();
-    const initialState = client.store.getState();
-    client.stop();
+    // 1. Create initial state
+    const initialState = InitializeGame({ game: JassGame, numPlayers: 2 });
 
     // 2. Save match metadata
     const match = await prisma.match.create({
@@ -36,8 +32,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, matchId: match.id });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating match:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Internal server error', stack: error.stack }, { status: 500 });
   }
 }

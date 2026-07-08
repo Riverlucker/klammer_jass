@@ -28,10 +28,15 @@ export default function Home() {
          // Create local player mapping in localStorage for simple auth (Player 0)
          localStorage.setItem(`jass_player_${data.matchId}`, '0');
          router.push(`/game/${data.matchId}`);
+      } else {
+         console.error('API Error:', data.error);
+         setIsLoading(false);
+         alert(`Fehler: ${data.error}`);
       }
     } catch (err) {
       console.error(err);
       setIsLoading(false);
+      alert('Ein Netzwerkfehler ist aufgetreten.');
     }
   };
 

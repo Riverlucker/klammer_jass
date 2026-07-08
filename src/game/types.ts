@@ -22,6 +22,7 @@ export interface JassState {
   revealedCard: Card | null;
   dealer: string;
   vorne: string;
+  readyPlayers: string[];
   scores: Record<string, number>; 
   handScores: Record<string, number>;
   

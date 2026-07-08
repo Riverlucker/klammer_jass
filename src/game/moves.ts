@@ -3,6 +3,15 @@ import { INVALID_MOVE } from 'boardgame.io/core';
 import { JassState } from './types';
 import { Suit } from './constants';
 
+export const setReady: Move<JassState> = ({ G, ctx, events }) => {
+  if (!G.readyPlayers.includes(ctx.currentPlayer)) {
+    G.readyPlayers.push(ctx.currentPlayer);
+  }
+  if (G.readyPlayers.length === 2) {
+    events.endPhase(); // Proceed to deal
+  }
+};
+
 export const acceptOriginal: Move<JassState> = ({ G, ctx, events }) => {
   if (G.trumpSelectionPassedCount >= 2) return INVALID_MOVE;
   
