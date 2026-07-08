@@ -247,11 +247,6 @@ export default function GamePage() {
                 {isMyTurn && G.trumpSelectionPassedCount === 2 && G.vorne === playerId && !G.smallGameAnnounced && (
                   <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '300px' }}>
                     <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('announceSmallGame', [], playerId!))}>Kleines Spiel ansagen</button>
-                    {['Spades', 'Hearts', 'Diamonds', 'Clubs'].filter(s => s !== G.revealedCard?.suit).map(suit => (
-                       <button key={suit} className="btn" onClick={() => dispatchMove(createMoveAction('chooseTrump', [suit], playerId!))}>
-                         {suitSymbols[suit as Suit]} wählen
-                       </button>
-                    ))}
                     <button className="btn" style={{ background: '#ef4444' }} onClick={() => dispatchMove(createMoveAction('decline', [], playerId!))}>Schieben</button>
                   </div>
                 )}
