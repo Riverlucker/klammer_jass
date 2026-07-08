@@ -1,6 +1,49 @@
-import Link from 'next/link';
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [targetScore, setTargetScore] = useState('301');
+  const [schneiderRule, setSchneiderRule] = useState('yes');
+  const [cubeEnabled, setCubeEnabled] = useState('enabled');
+  
+  const [joinMatchId, setJoinMatchId] = useState('');
+
+  const handleCreateMatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/matches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetScore, schneiderRule, cubeEnabled })
+      });
+      const data = await res.json();
+      
+      if (data.success && data.matchId) {
+         // Create local player mapping in localStorage for simple auth (Player 0)
+         localStorage.setItem(`jass_player_${data.matchId}`, '0');
+         router.push(`/game/${data.matchId}`);
+      }
+    } catch (err) {
+      console.error(err);
+      setIsLoading(false);
+    }
+  };
+
+  const handleJoinMatch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinMatchId) return;
+    
+    // Simple auth (Player 1)
+    localStorage.setItem(`jass_player_${joinMatchId}`, '1');
+    router.push(`/game/${joinMatchId}`);
+  };
+
   return (
     <main style={{ padding: '4rem 2rem', maxWidth: '800px', margin: '0 auto' }}>
       <div className="glass-panel" style={{ textAlign: 'center' }}>
@@ -15,10 +58,10 @@ export default function Home() {
           
           <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem' }}>
             <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>Neues Match erstellen</h2>
-            <form>
+            <form onSubmit={handleCreateMatch}>
               <div className="input-group">
                 <label>Zielpunktzahl</label>
-                <select defaultValue="301">
+                <select value={targetScore} onChange={e => setTargetScore(e.target.value)}>
                   <option value="301">301</option>
                   <option value="401">401</option>
                   <option value="501">501</option>
@@ -27,7 +70,7 @@ export default function Home() {
               </div>
               <div className="input-group">
                 <label>Schneider-Regel</label>
-                <select defaultValue="yes">
+                <select value={schneiderRule} onChange={e => setSchneiderRule(e.target.value)}>
                   <option value="yes">Ja</option>
                   <option value="no">Nein</option>
                   <option value="only_if_doubled">Nur wenn gedreht</option>
@@ -35,25 +78,30 @@ export default function Home() {
               </div>
               <div className="input-group">
                 <label>Würfel</label>
-                <select defaultValue="enabled">
+                <select value={cubeEnabled} onChange={e => setCubeEnabled(e.target.value)}>
                   <option value="enabled">Mit Würfel</option>
                   <option value="disabled">Ohne Würfel</option>
                 </select>
               </div>
-              <button type="button" className="btn btn-accent" style={{ width: '100%', marginTop: '1rem' }}>
-                Match starten
+              <button type="submit" disabled={isLoading} className="btn btn-accent" style={{ width: '100%', marginTop: '1rem', opacity: isLoading ? 0.5 : 1 }}>
+                {isLoading ? 'Lädt...' : 'Match starten'}
               </button>
             </form>
           </div>
 
           <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem' }}>
              <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>Match beitreten</h2>
-             <form>
+             <form onSubmit={handleJoinMatch}>
                <div className="input-group">
                  <label>Match ID</label>
-                 <input type="text" placeholder="z.B. 1234-5678-9012" />
+                 <input 
+                   type="text" 
+                   placeholder="z.B. 1234-5678" 
+                   value={joinMatchId} 
+                   onChange={e => setJoinMatchId(e.target.value)} 
+                 />
                </div>
-               <button type="button" className="btn" style={{ width: '100%', marginTop: '1rem' }}>
+               <button type="submit" className="btn" style={{ width: '100%', marginTop: '1rem' }}>
                  Beitreten
                </button>
              </form>
