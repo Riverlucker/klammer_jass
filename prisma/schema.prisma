@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  matchesAsPlayer1 Match[] @relation("Player1Matches")
+  matchesAsPlayer2 Match[] @relation("Player2Matches")
+}
+
+model Match {
+  id            String   @id @default(uuid())
+  player1Id     String?
+  player2Id     String?
+  targetScore   Int      @default(301)
+  schneiderRule String   @default("yes")
+  cubeEnabled   Boolean  @default(true)
+  bet           Int      @default(1)
+  status        String   @default("waiting")
+  createdAt     DateTime @default(now())
+
+  player1 User?  @relation("Player1Matches", fields: [player1Id], references: [id])
+  player2 User?  @relation("Player2Matches", fields: [player2Id], references: [id])
+  games   Game[]
+}
+
+model Game {
+  id        String   @id @default(uuid())
+  matchId   String?
+  state     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  match Match? @relation(fields: [matchId], references: [id])
+}

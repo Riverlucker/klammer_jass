@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/db';
-import { games } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { prisma } from '@/db';
 import { pusherServer } from '@/lib/pusher';
 import { CreateGameReducer } from 'boardgame.io/core';
 import { JassGame } from '@/game/logic';
@@ -19,8 +17,8 @@ export async function POST(req: Request) {
     }
 
     // 1. Fetch current game state from DB to ensure validity
-    const gameRecord = await db.query.games.findFirst({
-      where: eq(games.id, matchId),
+    const gameRecord = await prisma.game.findUnique({
+      where: { id: matchId },
     });
 
     if (!gameRecord) {
@@ -30,27 +28,17 @@ export async function POST(req: Request) {
     const currentState = gameRecord.state as any; // The boardgame.io state
 
     // 2. Validate move using boardgame.io reducer
-    // We pass the current state, the action, and a fake context
     const nextState = reducer(currentState, action);
 
-    // If the move was invalid, boardgame.io doesn't change the state or adds an error
-    // In standard boardgame.io, an invalid move might throw or just return the same state
-    // We check if it's the exact same reference or if there's an error.
-    if (nextState === currentState || nextState._undo?.length === currentState._undo?.length && nextState.ctx.turn === currentState.ctx.turn && nextState.G === currentState.G) {
-      // Actually boardgame.io reducer will return a new object but we can check if it was processed
-      // A more robust check is to look at the state version or just assume if it didn't throw it's fine for now.
-    }
-
     // 3. Save new state to DB
-    await db.update(games)
-      .set({ 
-        state: nextState,
-        updatedAt: new Date()
-      })
-      .where(eq(games.id, matchId));
+    await prisma.game.update({
+      where: { id: matchId },
+      data: {
+        state: nextState as any,
+      },
+    });
 
     // 4. Broadcast new state via Pusher
-    // We trigger an event on the channel 'match-<matchId>'
     await pusherServer.trigger(`match-${matchId}`, 'state-update', {
       state: nextState,
     });
