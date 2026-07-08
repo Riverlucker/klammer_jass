@@ -38,9 +38,9 @@ export async function POST(req: Request) {
       },
     });
 
-    // 4. Broadcast new state via Pusher
+    // 4. Broadcast new state via Pusher (only send a ping to avoid 10kb limit)
     await pusherServer.trigger(`match-${matchId}`, 'state-update', {
-      state: nextState,
+      timestamp: Date.now(),
     });
 
     return NextResponse.json({ success: true, state: nextState });

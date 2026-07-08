@@ -5,10 +5,7 @@ export function useJassGame(matchId: string, playerId: string | null) {
   const [state, setState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initial fetch
-  useEffect(() => {
-    if (!matchId) return;
-
+  const fetchState = () => {
     fetch(`/api/matches/${matchId}`)
       .then(res => res.json())
       .then(data => {
@@ -21,6 +18,12 @@ export function useJassGame(matchId: string, playerId: string | null) {
         console.error(err);
         setLoading(false);
       });
+  };
+
+  // Initial fetch
+  useEffect(() => {
+    if (!matchId) return;
+    fetchState();
   }, [matchId]);
 
   // Pusher subscription
@@ -31,8 +34,8 @@ export function useJassGame(matchId: string, playerId: string | null) {
     if (!pusher) return;
 
     const channel = pusher.subscribe(`match-${matchId}`);
-    channel.bind('state-update', (data: { state: any }) => {
-      setState(data.state);
+    channel.bind('state-update', () => {
+      fetchState(); // Refetch from DB instead of using payload due to 10kb limit
     });
 
     return () => {
