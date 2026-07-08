@@ -17,7 +17,8 @@ export function isCardHigherInTrick(
 ): boolean {
   if (cardToPlay.suit === cardToBeat.suit) {
     const isTrump = cardToPlay.suit === trumpSuit;
-    return getRankIndex(cardToPlay.rank, isTrump) > getRankIndex(cardToBeat.rank, isTrump);
+    // Lower index means higher rank because arrays are [A, 10, K...] or [J, 9, A...]
+    return getRankIndex(cardToPlay.rank, isTrump) < getRankIndex(cardToBeat.rank, isTrump);
   } else {
     // If suits are different, cardToPlay only wins if it's trump
     return cardToPlay.suit === trumpSuit;
@@ -44,9 +45,10 @@ export function isMoveLegal(
     // If lead suit IS trump, we have Stech-Pflicht (Must overtrump if possible)
     if (leadSuit === trumpSuit) {
        const highestTrumpInTrick = getHighestCardInTrick(trickCards, leadSuit, trumpSuit);
-       const canOvertrump = hand.some(c => c.suit === trumpSuit && getRankIndex(c.rank, true) > getRankIndex(highestTrumpInTrick.rank, true));
+       // canOvertrump if player has a trump card whose index is SMALLER than highestTrumpInTrick's index
+       const canOvertrump = hand.some(c => c.suit === trumpSuit && getRankIndex(c.rank, true) < getRankIndex(highestTrumpInTrick.rank, true));
        if (canOvertrump) {
-          if (getRankIndex(cardToPlay.rank, true) <= getRankIndex(highestTrumpInTrick.rank, true)) return false;
+          if (getRankIndex(cardToPlay.rank, true) >= getRankIndex(highestTrumpInTrick.rank, true)) return false;
        }
     }
     return true;
@@ -57,11 +59,12 @@ export function isMoveLegal(
     if (cardToPlay.suit !== trumpSuit) return false;
 
     // Stech-Pflicht (Must overtrump if a trump is already played)
-    const highestTrumpInTrick = trickCards.filter(c => c.suit === trumpSuit).sort((a,b) => getRankIndex(b.rank, true) - getRankIndex(a.rank, true))[0];
+    // sort ascending by index so index 0 (highest card) is first
+    const highestTrumpInTrick = trickCards.filter(c => c.suit === trumpSuit).sort((a,b) => getRankIndex(a.rank, true) - getRankIndex(b.rank, true))[0];
     if (highestTrumpInTrick) {
-       const canOvertrump = hand.some(c => c.suit === trumpSuit && getRankIndex(c.rank, true) > getRankIndex(highestTrumpInTrick.rank, true));
+       const canOvertrump = hand.some(c => c.suit === trumpSuit && getRankIndex(c.rank, true) < getRankIndex(highestTrumpInTrick.rank, true));
        if (canOvertrump) {
-          if (getRankIndex(cardToPlay.rank, true) <= getRankIndex(highestTrumpInTrick.rank, true)) return false;
+          if (getRankIndex(cardToPlay.rank, true) >= getRankIndex(highestTrumpInTrick.rank, true)) return false;
        }
     }
     return true;

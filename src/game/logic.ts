@@ -41,6 +41,20 @@ export const JassGame: Game<JassState> = {
     },
     deal: {
       onBegin: ({ G, random, events }) => {
+        // Reset state for the new hand
+        G.deck = createDeck();
+        G.trump = null;
+        G.revealedCard = null;
+        G.cubeOffer = null;
+        G.smallGameAnnounced = false;
+        G.trumpSelectionPassedCount = 0;
+        G.pendingMeld = null;
+        G.shownMelds = [];
+        G.pastTricks = [];
+        G.trickWinner = null;
+        G.currentTrick = { leadPlayer: G.vorne, cards: {}, winner: null };
+        G.handScores = { '0': 0, '1': 0 };
+
         const shuffle = random?.Shuffle || function(arr: any[]) {
           // Fallback Fisher-Yates shuffle if plugin is missing during InitializeGame
           const result = [...arr];
@@ -55,6 +69,9 @@ export const JassGame: Game<JassState> = {
         G.hands['0'] = G.deck.splice(0, 6);
         G.hands['1'] = G.deck.splice(0, 6);
         G.revealedCard = G.deck.splice(0, 1)[0];
+        
+        // Reset readyPlayers to use as "ready for next hand" in endOfHand phase
+        G.readyPlayers = []; 
         events.endPhase();
       },
       next: 'trumpSelection',
@@ -86,6 +103,16 @@ export const JassGame: Game<JassState> = {
         acceptCube: JassMoves.acceptCube,
         declineCube: JassMoves.declineCube,
       },
+      next: 'endOfHand',
+    },
+    endOfHand: {
+      turn: {
+        activePlayers: { all: 'waiting' },
+      },
+      moves: {
+        nextHand: JassMoves.nextHand,
+      },
+      next: 'deal',
     }
   }
 };

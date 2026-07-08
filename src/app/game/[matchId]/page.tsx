@@ -144,7 +144,7 @@ export default function GamePage() {
     <main style={{ padding: '1rem', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <header className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem 2rem', marginBottom: '1rem' }}>
         <div>
-           <div style={{ fontSize: '0.875rem', color: '#cbd5e1' }}>Match ID: {matchId} | Spieler: {playerId}</div>
+           <div style={{ fontSize: '0.875rem', color: '#cbd5e1' }}>Match ID: {matchId} | Du bist Spieler: {playerId}</div>
            <div style={{ fontWeight: 'bold' }}>
              Phase: {ctx.phase} {isMyTurn && <span style={{ color: 'var(--accent)' }}>(Du bist am Zug!)</span>}
            </div>
@@ -197,8 +197,9 @@ export default function GamePage() {
         {/* Opponent Area */}
         <div style={{ height: '120px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', position: 'relative' }}>
           {getTrickCount(opponentId) > 0 && (
-             <div style={{ position: 'absolute', left: '20px', width: '60px', height: '90px', background: 'url(/card-back.png) center/cover, #222', borderRadius: '8px', border: '2px solid #555', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-               {getTrickCount(opponentId)}
+             <div style={{ position: 'absolute', left: '20px', width: '60px', height: '90px', background: 'url(/card-back.png) center/cover, #222', borderRadius: '8px', border: '2px solid #555', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexDirection: 'column' }}>
+               <span style={{ fontSize: '0.7rem' }}>Stiche</span>
+               <span>{getTrickCount(opponentId)}</span>
              </div>
           )}
           {Array.from({ length: opponentHandCount }).map((_, i) => (
@@ -209,6 +210,27 @@ export default function GamePage() {
         {/* Play Area */}
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '2rem' }}>
            
+           {/* END OF HAND PHASE UI */}
+           {ctx.phase === 'endOfHand' && (
+             <div className="glass-panel" style={{ textAlign: 'center', minWidth: '300px' }}>
+                <h2 style={{ marginBottom: '1rem', color: '#fbbf24' }}>Hand Auswertung</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', fontSize: '1.2rem' }}>
+                  <div>Spieler 0<br/><strong>{G.handScores['0']}</strong></div>
+                  <div>Spieler 1<br/><strong>{G.handScores['1']}</strong></div>
+                </div>
+                
+                <p style={{ marginBottom: '1rem' }}>{G.readyPlayers.length} / 2 bereit für nächste Hand</p>
+                
+                {!G.readyPlayers.includes(playerId || '0') ? (
+                  <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('nextHand', [playerId!], playerId!))}>
+                    Nächste Hand starten
+                  </button>
+                ) : (
+                  <p style={{ color: '#10b981' }}>Warten auf Gegner...</p>
+                )}
+             </div>
+           )}
+
            {/* TRUMP SELECTION PHASE UI */}
            {ctx.phase === 'trumpSelection' && (
              <div style={{ textAlign: 'center' }}>
@@ -280,8 +302,9 @@ export default function GamePage() {
         <div style={{ height: '160px', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '0.5rem', paddingBottom: '1rem', position: 'relative' }}>
            
            {getTrickCount(playerId || '0') > 0 && (
-             <div style={{ position: 'absolute', right: '20px', bottom: '20px', width: '60px', height: '90px', background: 'url(/card-back.png) center/cover, #222', borderRadius: '8px', border: '2px solid #555', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-               {getTrickCount(playerId || '0')}
+             <div style={{ position: 'absolute', right: '20px', bottom: '20px', width: '60px', height: '90px', background: 'url(/card-back.png) center/cover, #222', borderRadius: '8px', border: '2px solid #555', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexDirection: 'column' }}>
+               <span style={{ fontSize: '0.7rem' }}>Stiche</span>
+               <span>{getTrickCount(playerId || '0')}</span>
              </div>
            )}
 

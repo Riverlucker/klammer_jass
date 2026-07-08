@@ -116,8 +116,8 @@ export const playCard: Move<JassState> = ({ G, ctx, events }, card: Card, meldDe
         G.scores['1'] += G.handScores['1'];
         
         // Check win condition (>= 301)
-        // Re-deal if nobody reached target score
-        events.setPhase('deal');
+        // If somebody reached target score, we could end the game. For now we just go to endOfHand.
+        events.endPhase();
      } else {
         events.endTurn({ next: winnerPlayer });
      }

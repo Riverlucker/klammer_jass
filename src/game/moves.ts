@@ -12,6 +12,18 @@ export const setReady: Move<JassState> = ({ G, ctx, events }, playerId: string) 
   }
 };
 
+export const nextHand: Move<JassState> = ({ G, ctx, events }, playerId: string) => {
+  if (!G.readyPlayers.includes(playerId)) {
+    G.readyPlayers.push(playerId);
+  }
+  if (G.readyPlayers.length === 2) {
+    // Switch roles
+    G.dealer = G.dealer === '0' ? '1' : '0';
+    G.vorne = G.vorne === '0' ? '1' : '0';
+    events.endPhase(); // Proceed to deal
+  }
+};
+
 export const acceptOriginal: Move<JassState> = ({ G, ctx, events }) => {
   if (G.trumpSelectionPassedCount >= 2) return INVALID_MOVE;
   
