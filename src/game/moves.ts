@@ -3,9 +3,9 @@ import { INVALID_MOVE } from 'boardgame.io/core';
 import { JassState } from './types';
 import { Suit } from './constants';
 
-export const setReady: Move<JassState> = ({ G, ctx, events }) => {
-  if (!G.readyPlayers.includes(ctx.currentPlayer)) {
-    G.readyPlayers.push(ctx.currentPlayer);
+export const setReady: Move<JassState> = ({ G, ctx, events }, playerId: string) => {
+  if (!G.readyPlayers.includes(playerId)) {
+    G.readyPlayers.push(playerId);
   }
   if (G.readyPlayers.length === 2) {
     events.endPhase(); // Proceed to deal

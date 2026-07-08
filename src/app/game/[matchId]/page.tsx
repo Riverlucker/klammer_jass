@@ -104,7 +104,7 @@ export default function GamePage() {
         <h2>Warten auf Spieler...</h2>
         <p>{G.readyPlayers.length} / 2 Spieler bereit</p>
         {!isReady && (
-          <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('setReady', [], playerId!))}>
+          <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('setReady', [playerId!], playerId!))}>
             Los gehts!
           </button>
         )}
