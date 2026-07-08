@@ -25,6 +25,7 @@ export interface JassState {
   readyPlayers: string[];
   scores: Record<string, number>; 
   handScores: Record<string, number>;
+  handScoreDetails: Record<string, { tricks: number, melds: number, lastTrick: number }>;
   
   cube: {
     value: number;

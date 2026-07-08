@@ -8,10 +8,16 @@
   --card-border: rgba(255, 255, 255, 0.1);
   --glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
   --glass-blur: blur(10px);
+  --table-green: #0d4732;
+  --table-green-dark: #07281a;
+  --card-white: #fdfbf7;
+  --card-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.1);
+  --card-shadow-hover: 0 12px 24px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(0,0,0,0.1);
 }
 
 body {
-  background: var(--background);
+  background: radial-gradient(circle at center, var(--table-green) 0%, var(--table-green-dark) 100%);
+  position: relative;
   color: var(--foreground);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   margin: 0;
@@ -79,8 +85,83 @@ body {
   font-size: 1rem;
 }
 
-.input-group select:focus,
 .input-group input:focus {
   outline: none;
   border-color: var(--primary);
+}
+
+/* Premium Playing Cards */
+.playing-card {
+  width: 90px;
+  height: 135px;
+  background: var(--card-white);
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  cursor: pointer;
+  user-select: none;
+  font-family: 'Times New Roman', serif;
+  transform-style: preserve-3d;
+}
+
+.playing-card.red {
+  color: #dc2626;
+}
+
+.playing-card.black {
+  color: #171717;
+}
+
+.playing-card:hover:not(:disabled):not(.disabled) {
+  transform: translateY(-10px) scale(1.05);
+  box-shadow: var(--card-shadow-hover);
+  z-index: 10;
+}
+
+.playing-card.disabled {
+  opacity: 0.6;
+  filter: grayscale(0.5);
+  cursor: not-allowed;
+}
+
+.playing-card .corner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 1.1rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.playing-card .corner.bottom {
+  transform: rotate(180deg);
+}
+
+.playing-card .center-suit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 3rem;
+  opacity: 0.9;
+}
+
+/* Animations */
+@keyframes slideInFromBottom {
+  from { opacity: 0; transform: translateY(50px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dealCard {
+  from { opacity: 0; transform: scale(0.5) translate(-200px, 200px) rotate(-180deg); }
+  to { opacity: 1; transform: scale(1) translate(0, 0) rotate(0deg); }
+}
+
+.animate-deal {
+  animation: dealCard 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }

@@ -17,6 +17,10 @@ export const JassGame: Game<JassState> = {
     readyPlayers: [],
     scores: { '0': 0, '1': 0 },
     handScores: { '0': 0, '1': 0 },
+    handScoreDetails: { 
+      '0': { tricks: 0, melds: 0, lastTrick: 0 }, 
+      '1': { tricks: 0, melds: 0, lastTrick: 0 } 
+    },
     cube: { value: 1, holder: null },
     cubeOffer: null,
     smallGameAnnounced: false,
@@ -54,6 +58,10 @@ export const JassGame: Game<JassState> = {
         G.trickWinner = null;
         G.currentTrick = { leadPlayer: G.vorne, cards: {}, winner: null };
         G.handScores = { '0': 0, '1': 0 };
+        G.handScoreDetails = { 
+          '0': { tricks: 0, melds: 0, lastTrick: 0 }, 
+          '1': { tricks: 0, melds: 0, lastTrick: 0 } 
+        };
 
         const shuffle = random?.Shuffle || function(arr: any[]) {
           // Fallback Fisher-Yates shuffle if plugin is missing during InitializeGame

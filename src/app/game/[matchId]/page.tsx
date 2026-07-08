@@ -30,27 +30,25 @@ function sortHand(hand: Card[], trumpSuit: Suit | null): Card[] {
   });
 }
 
-function CardView({ card, onClick, style, disabled }: { card: Card, onClick?: () => void, style?: React.CSSProperties, disabled?: boolean }) {
-  const color = suitColors[card.suit];
+function CardView({ card, onClick, disabled }: { card: Card, onClick?: () => void, disabled?: boolean }) {
+  const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds';
   const symbol = suitSymbols[card.suit];
   
   return (
     <div 
       onClick={disabled ? undefined : onClick}
-      className={disabled ? "" : "card-hover"}
-      style={{ 
-        width: '80px', height: '120px', background: 'white', borderRadius: '8px', 
-        color, display: 'flex', flexDirection: 'column', padding: '0.5rem',
-        cursor: disabled ? 'not-allowed' : (onClick ? 'pointer' : 'default'), 
-        transition: 'transform 0.2s',
-        boxShadow: '-2px 0 5px rgba(0,0,0,0.2)', userSelect: 'none',
-        opacity: disabled ? 0.5 : 1,
-        ...style
-      }}
+      className={`playing-card animate-deal ${isRed ? 'red' : 'black'} ${disabled ? 'disabled' : ''}`}
     >
-      <div style={{ fontWeight: 'bold', fontSize: '1.25rem' }}>{card.rank}{symbol}</div>
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem' }}>
+      <div className="corner top">
+        <span>{card.rank}</span>
+        <span>{symbol}</span>
+      </div>
+      <div className="center-suit">
         {symbol}
+      </div>
+      <div className="corner bottom">
+        <span>{card.rank}</span>
+        <span>{symbol}</span>
       </div>
     </div>
   );
@@ -66,6 +64,7 @@ export default function GamePage() {
   const [selectedMeldType, setSelectedMeldType] = useState<MeldType | 'None'>('None');
 
   const [showLastTrick, setShowLastTrick] = useState(false);
+  const [endOfHandTimer, setEndOfHandTimer] = useState(10);
   const previousTrickCount = useRef(0);
 
   useEffect(() => {
@@ -82,6 +81,22 @@ export default function GamePage() {
       return () => clearTimeout(timer);
     }
   }, [state?.G.pastTricks]);
+
+  useEffect(() => {
+    if (state?.ctx.phase === 'endOfHand') {
+      const isReady = state.G.readyPlayers.includes(playerId || '0');
+      if (isReady) return;
+      
+      if (endOfHandTimer > 0) {
+        const timerId = setTimeout(() => setEndOfHandTimer(prev => prev - 1), 1000);
+        return () => clearTimeout(timerId);
+      } else {
+        dispatchMove(createMoveAction('nextHand', [playerId!], playerId!));
+      }
+    } else {
+      setEndOfHandTimer(10); // reset for next time
+    }
+  }, [state?.ctx.phase, endOfHandTimer, state?.G.readyPlayers, playerId]);
 
   if (loading || !state) {
     return <div style={{ padding: '2rem', textAlign: 'center', color: 'white' }}>Lade Spiel...</div>;
@@ -152,7 +167,7 @@ export default function GamePage() {
              {G.trump && <div style={{ color: suitColors[G.trump], fontWeight: 'bold' }}>Trumpf: {G.trump} {suitSymbols[G.trump]}</div>}
              {G.revealedCard && (
                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.7, fontSize: '0.8rem' }}>
-                 Ursprung: <CardView card={G.revealedCard} style={{ width: '30px', height: '45px', padding: '0.2rem', fontSize: '0.6rem' }} />
+                 Ursprung: <div style={{ transform: 'scale(0.3)', transformOrigin: 'left center' }}><CardView card={G.revealedCard} disabled /></div>
                </div>
              )}
            </div>
@@ -188,10 +203,6 @@ export default function GamePage() {
         </div>
       </header>
 
-      <style dangerouslySetInnerHTML={{__html: `
-        .card-hover:hover { transform: translateY(-10px) !important; z-index: 20 !important; }
-      `}} />
-
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         
         {/* Opponent Area */}
@@ -212,22 +223,54 @@ export default function GamePage() {
            
            {/* END OF HAND PHASE UI */}
            {ctx.phase === 'endOfHand' && (
-             <div className="glass-panel" style={{ textAlign: 'center', minWidth: '300px' }}>
-                <h2 style={{ marginBottom: '1rem', color: '#fbbf24' }}>Hand Auswertung</h2>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', fontSize: '1.2rem' }}>
-                  <div>Spieler 0<br/><strong>{G.handScores['0']}</strong></div>
-                  <div>Spieler 1<br/><strong>{G.handScores['1']}</strong></div>
-                </div>
-                
-                <p style={{ marginBottom: '1rem' }}>{G.readyPlayers.length} / 2 bereit für nächste Hand</p>
-                
-                {!G.readyPlayers.includes(playerId || '0') ? (
-                  <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('nextHand', [playerId!], playerId!))}>
-                    Nächste Hand starten
-                  </button>
-                ) : (
-                  <p style={{ color: '#10b981' }}>Warten auf Gegner...</p>
-                )}
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', width: '100%', maxWidth: '800px', maxHeight: '60vh', overflowY: 'auto', padding: '1rem' }}>
+               <div className="glass-panel" style={{ textAlign: 'center' }}>
+                  <h2 style={{ marginBottom: '1rem', color: '#fbbf24' }}>Hand Auswertung</h2>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '1rem', fontSize: '1rem', textAlign: 'left' }}>
+                    <div>
+                      <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Spieler 0: <strong>{G.handScores['0']}</strong></div>
+                      <div style={{ color: '#cbd5e1' }}>Stiche: {G.handScoreDetails['0'].tricks}</div>
+                      <div style={{ color: '#cbd5e1' }}>Meldungen: {G.handScoreDetails['0'].melds}</div>
+                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {G.handScoreDetails['0'].lastTrick}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Spieler 1: <strong>{G.handScores['1']}</strong></div>
+                      <div style={{ color: '#cbd5e1' }}>Stiche: {G.handScoreDetails['1'].tricks}</div>
+                      <div style={{ color: '#cbd5e1' }}>Meldungen: {G.handScoreDetails['1'].melds}</div>
+                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {G.handScoreDetails['1'].lastTrick}</div>
+                    </div>
+                  </div>
+                  
+                  <p style={{ marginBottom: '1rem' }}>{G.readyPlayers.length} / 2 bereit für nächste Hand (Weiter in {endOfHandTimer}s)</p>
+                  
+                  {!G.readyPlayers.includes(playerId || '0') ? (
+                    <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('nextHand', [playerId!], playerId!))}>
+                      Nächste Hand starten
+                    </button>
+                  ) : (
+                    <p style={{ color: '#10b981' }}>Warten auf Gegner...</p>
+                  )}
+               </div>
+
+               <div className="glass-panel">
+                 <h3 style={{ marginBottom: '1rem' }}>Alle Stiche dieser Hand</h3>
+                 <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem' }}>
+                   {G.pastTricks.map((trick: any, index: number) => (
+                     <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px' }}>
+                       <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>Stich {index + 1} (Gewinner: P{trick.winner})</span>
+                       <div style={{ display: 'flex', gap: '0.25rem' }}>
+                          <div style={{ transform: 'scale(0.6)', transformOrigin: 'top left', width: '54px', height: '81px' }}>
+                             <CardView card={trick.cards['0']} disabled />
+                          </div>
+                          <div style={{ transform: 'scale(0.6)', transformOrigin: 'top left', width: '54px', height: '81px' }}>
+                             <CardView card={trick.cards['1']} disabled />
+                          </div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
              </div>
            )}
 
@@ -235,7 +278,7 @@ export default function GamePage() {
            {ctx.phase === 'trumpSelection' && (
              <div style={{ textAlign: 'center' }}>
                 <h3 style={{ marginBottom: '1rem' }}>Trumpf-Verhandlung</h3>
-                {G.revealedCard && <CardView card={G.revealedCard} style={{ margin: '0 auto 1rem auto' }} />}
+                {G.revealedCard && <div style={{ display: 'flex', justifyContent: 'center', margin: '0 auto 1rem auto' }}><CardView card={G.revealedCard} /></div>}
                 
                 {isMyTurn && G.trumpSelectionPassedCount < 2 && (
                   <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
@@ -286,7 +329,9 @@ export default function GamePage() {
              <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   {Object.entries(currentTrickToDisplay).map(([pId, card]: [string, any]) => (
-                     <CardView key={pId} card={card} style={{ transform: pId === playerId ? 'translateY(20px)' : 'translateY(-20px)' }} />
+                     <div key={pId} style={{ transform: pId === playerId ? 'translateY(20px)' : 'translateY(-20px)' }}>
+                       <CardView card={card} />
+                     </div>
                   ))}
                 </div>
              </div>

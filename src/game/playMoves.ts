@@ -79,6 +79,7 @@ export const playCard: Move<JassState> = ({ G, ctx, events }, card: Card, meldDe
            if (winner && winningMeldType) {
               const points = winningMeldType === 'Fünfzig' ? 50 : 20;
               G.handScores[winner] += points;
+              G.handScoreDetails[winner].melds += points;
               G.shownMelds.push({ player: winner, type: winningMeldType, cards: [] });
            }
         }
@@ -102,6 +103,7 @@ export const playCard: Move<JassState> = ({ G, ctx, events }, card: Card, meldDe
      // Calculate points
      const points = calculateCardPoints(trickCards[0], G.trump!) + calculateCardPoints(trickCards[1], G.trump!);
      G.handScores[winnerPlayer] += points;
+     G.handScoreDetails[winnerPlayer].tricks += points;
 
      G.pastTricks.push({ ...G.currentTrick });
      G.currentTrick = { leadPlayer: winnerPlayer, cards: {}, winner: null };
@@ -110,6 +112,7 @@ export const playCard: Move<JassState> = ({ G, ctx, events }, card: Card, meldDe
      if (G.hands['0'].length === 0 && G.hands['1'].length === 0) {
         // Last trick gets 10 points
         G.handScores[winnerPlayer] += 10;
+        G.handScoreDetails[winnerPlayer].lastTrick += 10;
         
         // Add to total scores
         G.scores['0'] += G.handScores['0'];
