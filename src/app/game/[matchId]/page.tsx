@@ -222,7 +222,10 @@ export default function GamePage() {
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '2rem' }}>
            
            {/* END OF HAND PHASE UI */}
-           {ctx.phase === 'endOfHand' && (
+           {ctx.phase === 'endOfHand' && (() => {
+             const details0 = G.handScoreDetails?.['0'] || { tricks: 0, melds: 0, lastTrick: 0 };
+             const details1 = G.handScoreDetails?.['1'] || { tricks: 0, melds: 0, lastTrick: 0 };
+             return (
              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', width: '100%', maxWidth: '800px', maxHeight: '60vh', overflowY: 'auto', padding: '1rem' }}>
                <div className="glass-panel" style={{ textAlign: 'center' }}>
                   <h2 style={{ marginBottom: '1rem', color: '#fbbf24' }}>Hand Auswertung</h2>
@@ -230,15 +233,15 @@ export default function GamePage() {
                   <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '1rem', fontSize: '1rem', textAlign: 'left' }}>
                     <div>
                       <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Spieler 0: <strong>{G.handScores['0']}</strong></div>
-                      <div style={{ color: '#cbd5e1' }}>Stiche: {G.handScoreDetails['0'].tricks}</div>
-                      <div style={{ color: '#cbd5e1' }}>Meldungen: {G.handScoreDetails['0'].melds}</div>
-                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {G.handScoreDetails['0'].lastTrick}</div>
+                      <div style={{ color: '#cbd5e1' }}>Stiche: {details0.tricks}</div>
+                      <div style={{ color: '#cbd5e1' }}>Meldungen: {details0.melds}</div>
+                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {details0.lastTrick}</div>
                     </div>
                     <div>
                       <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Spieler 1: <strong>{G.handScores['1']}</strong></div>
-                      <div style={{ color: '#cbd5e1' }}>Stiche: {G.handScoreDetails['1'].tricks}</div>
-                      <div style={{ color: '#cbd5e1' }}>Meldungen: {G.handScoreDetails['1'].melds}</div>
-                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {G.handScoreDetails['1'].lastTrick}</div>
+                      <div style={{ color: '#cbd5e1' }}>Stiche: {details1.tricks}</div>
+                      <div style={{ color: '#cbd5e1' }}>Meldungen: {details1.melds}</div>
+                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {details1.lastTrick}</div>
                     </div>
                   </div>
                   
@@ -272,7 +275,8 @@ export default function GamePage() {
                  </div>
                </div>
              </div>
-           )}
+             );
+           })}
 
            {/* TRUMP SELECTION PHASE UI */}
            {ctx.phase === 'trumpSelection' && (
