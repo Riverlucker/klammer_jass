@@ -276,7 +276,7 @@ export default function GamePage() {
                </div>
              </div>
              );
-           })}
+           })()}
 
            {/* TRUMP SELECTION PHASE UI */}
            {ctx.phase === 'trumpSelection' && (
