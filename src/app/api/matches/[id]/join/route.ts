@@ -45,6 +45,10 @@ export async function POST(
         throw new SeatClaimError(409, 'Dieses Match verwendet einen nicht mehr unterstützten Spielstand.');
       }
 
+      if (gameRecord.state.G.matchResult || gameRecord.state.ctx.gameover !== undefined) {
+        throw new SeatClaimError(409, 'Dieses Match ist bereits beendet.');
+      }
+
       const player = await authenticatePlayer(
         transaction,
         parsed.data.playerName,

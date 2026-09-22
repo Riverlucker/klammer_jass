@@ -71,6 +71,8 @@ export default function GamePage() {
     ? pendingSelection.card : null;
   const [selectedMelds, setSelectedMelds] = useState<MeldType[]>([]);
   const [copied, setCopied] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteCopyError, setInviteCopyError] = useState(false);
   const dispatchMove: DispatchMove = async (move, args = []) => {
     const success = await sendMove(move, args);
     if (success && move === 'endMatch') router.replace('/');
@@ -129,6 +131,17 @@ export default function GamePage() {
     }
   }
 
+  async function copyInviteLink() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/invite/${matchId}`);
+      setInviteCopied(true);
+      setInviteCopyError(false);
+      window.setTimeout(() => setInviteCopied(false), 1800);
+    } catch {
+      setInviteCopyError(true);
+    }
+  }
+
   function availableMeldsFor(card: Card): MeldType[] {
     if (!G.trump) return [];
     return getAvailableMeldTypes(fullHand, G.trump, activePlayerId).filter((type) => {
@@ -177,6 +190,8 @@ export default function GamePage() {
             <span title={matchId}>{shortId(matchId)}</span>
             <button type="button" onClick={copyInvite}>{copied ? 'Kopiert' : 'ID kopieren'}</button>
           </div>
+          <button type="button" className={styles.inviteLinkButton} onClick={() => void copyInviteLink()}>{inviteCopied ? 'Link kopiert' : 'Einladungslink kopieren'}</button>
+          {inviteCopyError && <p role="alert">Kopieren nicht möglich. <Link href={`/invite/${matchId}`}>Einladungslink öffnen</Link></p>}
         </div>
         <div className={styles.headerScoreStrip}>
           <div className={styles.headerPlayer} data-side="left">
