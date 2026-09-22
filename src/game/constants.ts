@@ -17,7 +17,7 @@ export const NON_TRUMP_VALUES: Record<Rank, number> = {
 };
 
 export const TRUMP_VALUES: Record<Rank, number> = {
-  'J': 20, '9': 14, 'A': 11, '10': 10, 'K': 4, 'Q': 3, '8': 0, '7': 0
+  'J': 22, '9': 14, 'A': 11, '10': 10, 'K': 4, 'Q': 3, '8': 0, '7': 0
 };
 
 export function createDeck(): Card[] {

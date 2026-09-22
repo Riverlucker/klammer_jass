@@ -1,96 +1,115 @@
-import { Game } from 'boardgame.io';
-import { createDeck } from './constants';
-import { JassState } from './types';
+import type { Game } from 'boardgame.io';
+import { createDeck, type Card } from './constants';
 import * as JassMoves from './moves';
 import * as PlayMoves from './playMoves';
+import { initialGameScores } from './scoring';
+import { canExchangeTrumpSeven } from './trumpSeven';
+import {
+  RULES_VERSION,
+  otherPlayer,
+  type JassState,
+  type MatchSettings,
+  type PlayerID,
+} from './types';
 
-export const JassGame: Game<JassState> = {
+export const DEFAULT_SETTINGS: MatchSettings = {
+  targetScore: 301,
+  stake: 1,
+  handicap: 0,
+  schneiderRule: 'yes',
+  cubeEnabled: true,
+  moveTimeSeconds: 10,
+  cubeTimeSeconds: 30,
+};
+
+type MatchSetupData = MatchSettings & {
+  playerNames?: Partial<Record<PlayerID, string | null>>;
+};
+
+export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> = {
   name: 'klammer-jass',
+  minPlayers: 2,
+  maxPlayers: 2,
+  disableUndo: true,
 
-  setup: (ctx) => ({
-    deck: createDeck(),
-    hands: { '0': [], '1': [] },
-    trump: null,
-    revealedCard: null,
-    dealer: '0', // In a real game, this alternates or follows the winner of the hand
-    vorne: '1',
-    readyPlayers: [],
-    scores: { '0': 0, '1': 0 },
-    handScores: { '0': 0, '1': 0 },
-    handScoreDetails: { 
-      '0': { tricks: 0, melds: 0, lastTrick: 0 }, 
-      '1': { tricks: 0, melds: 0, lastTrick: 0 } 
-    },
-    cube: { value: 1, holder: null },
-    cubeOffer: null,
-    smallGameAnnounced: false,
-    trumpSelectionPassedCount: 0,
-    pendingMeld: null,
-    shownMelds: [],
-    currentTrick: { leadPlayer: '1', cards: {}, winner: null },
-    pastTricks: [],
-    trickWinner: null,
-  }),
+  setup: ({ random }, setupData) => {
+    const settings = setupData ?? DEFAULT_SETTINGS;
+    const dealer = String(random.Die(2) - 1) as PlayerID;
+    const vorne = otherPlayer(dealer);
+    return {
+      rulesVersion: RULES_VERSION,
+      playerNames: {
+        '0': setupData?.playerNames?.['0'] ?? null,
+        '1': setupData?.playerNames?.['1'] ?? null,
+      },
+      deck: createDeck(),
+      hands: emptyHands(),
+      trump: null,
+      revealedCard: null,
+      dealer,
+      vorne,
+      declarer: null,
+      contract: null,
+      readyPlayers: [],
+      scores: initialGameScores(settings.handicap),
+      matchPoints: { '0': 0, '1': 0 },
+      handScores: { '0': 0, '1': 0 },
+      handScoreDetails: emptyScoreDetails(),
+      settings,
+      gameNumber: 1,
+      handNumber: 1,
+      redealCount: 0,
+      lastHandResult: null,
+      gameResult: null,
+      matchResult: null,
+      cube: { value: 1, holder: null },
+      cubeOffer: null,
+      afterMoveDoubleBy: null,
+      smallGameAnnounced: false,
+      smallGameAccepted: false,
+      trumpSevenDecisions: [],
+      trumpSelectionPassedCount: 0,
+      meldContest: null,
+      pendingDealerSequence: false,
+      announcedBella: [],
+      shownMelds: [],
+      currentTrick: { leadPlayer: vorne, cards: {}, winner: null },
+      pastTricks: [],
+      trickWinner: null,
+      timeoutCard: null,
+      trickDisplayUntil: null,
+      extraDealStartedAt: null,
+      extraDealUntil: null,
+      deadlineAt: null,
+      nextGamePlayers: [],
+      matchPaused: false,
+      resumePlayers: [],
+      meldAnnouncement: null,
+      chatMessages: [],
+      chatSequence: 0,
+    };
+  },
 
   phases: {
     waitingRoom: {
       start: true,
-      moves: {
-        setReady: JassMoves.setReady,
-      },
-      turn: {
-        activePlayers: { all: 'waiting' },
-      },
+      moves: { setReady: JassMoves.setReady },
+      turn: { activePlayers: { all: 'waiting' } },
       next: 'deal',
     },
     deal: {
       onBegin: ({ G, random, events }) => {
-        // Reset state for the new hand
-        G.deck = createDeck();
-        G.trump = null;
-        G.revealedCard = null;
-        G.cubeOffer = null;
-        G.smallGameAnnounced = false;
-        G.trumpSelectionPassedCount = 0;
-        G.pendingMeld = null;
-        G.shownMelds = [];
-        G.pastTricks = [];
-        G.trickWinner = null;
-        G.currentTrick = { leadPlayer: G.vorne, cards: {}, winner: null };
-        G.handScores = { '0': 0, '1': 0 };
-        G.handScoreDetails = { 
-          '0': { tricks: 0, melds: 0, lastTrick: 0 }, 
-          '1': { tricks: 0, melds: 0, lastTrick: 0 } 
-        };
-
-        const shuffle = random?.Shuffle || function(arr: any[]) {
-          // Fallback Fisher-Yates shuffle if plugin is missing during InitializeGame
-          const result = [...arr];
-          for (let i = result.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [result[i], result[j]] = [result[j], result[i]];
-          }
-          return result;
-        };
-
-        G.deck = shuffle(G.deck);
+        resetHandState(G);
+        G.deck = random.Shuffle(createDeck());
         G.hands['0'] = G.deck.splice(0, 6);
         G.hands['1'] = G.deck.splice(0, 6);
         G.revealedCard = G.deck.splice(0, 1)[0];
-        
-        // Reset readyPlayers to use as "ready for next hand" in endOfHand phase
-        G.readyPlayers = []; 
         events.endPhase();
       },
       next: 'trumpSelection',
     },
     trumpSelection: {
-      turn: {
-        order: {
-          first: ({ G }) => Number(G.vorne),
-          next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.numPlayers,
-        }
-      },
+      turn: { order: alternatingOrder() },
       moves: {
         acceptOriginal: JassMoves.acceptOriginal,
         decline: JassMoves.decline,
@@ -102,11 +121,32 @@ export const JassGame: Game<JassState> = {
         acceptCube: JassMoves.acceptCube,
         declineCube: JassMoves.declineCube,
       },
+      next: 'trumpExchange',
+    },
+    trumpExchange: {
+      onBegin: ({ G, events }) => {
+        G.trumpSevenDecisions ??= [];
+        for (const playerId of ['0', '1'] as PlayerID[]) {
+          if (!canExchangeTrumpSeven(G, playerId) && !G.trumpSevenDecisions.includes(playerId)) {
+            G.trumpSevenDecisions.push(playerId);
+          }
+        }
+        if (G.trumpSevenDecisions.length === 2) events.endPhase();
+      },
+      turn: { activePlayers: { all: 'waiting' } },
+      moves: {
+        exchangeTrumpSeven: JassMoves.exchangeTrumpSeven,
+        keepTrumpSeven: JassMoves.keepTrumpSeven,
+      },
       next: 'playing',
     },
     playing: {
+      turn: { order: alternatingOrder() },
       moves: {
         playCard: PlayMoves.playCard,
+        respondMeld: PlayMoves.respondMeld,
+        nameMeld: PlayMoves.nameMeld,
+        resolveMeldContest: PlayMoves.resolveMeldContest,
         doubleCube: JassMoves.doubleCube,
         acceptCube: JassMoves.acceptCube,
         declineCube: JassMoves.declineCube,
@@ -114,13 +154,70 @@ export const JassGame: Game<JassState> = {
       next: 'endOfHand',
     },
     endOfHand: {
-      turn: {
-        activePlayers: { all: 'waiting' },
-      },
+      turn: { activePlayers: { all: 'waiting' } },
+      moves: { nextHand: JassMoves.nextHand },
+      next: 'deal',
+    },
+    endOfGame: {
+      turn: { activePlayers: { all: 'waiting' } },
       moves: {
-        nextHand: JassMoves.nextHand,
+        nextGame: JassMoves.nextGame,
+        endMatch: JassMoves.endMatch,
+        pauseMatch: JassMoves.pauseMatch,
+        resumeMatch: JassMoves.resumeMatch,
       },
       next: 'deal',
-    }
-  }
+    },
+  },
 };
+
+export function resetHandState(G: JassState) {
+  G.deck = createDeck();
+  G.hands = emptyHands();
+  G.trump = null;
+  G.revealedCard = null;
+  G.declarer = null;
+  G.contract = null;
+  G.readyPlayers = [];
+  G.handScores = { '0': 0, '1': 0 };
+  G.handScoreDetails = emptyScoreDetails();
+  G.lastHandResult = null;
+  G.cubeOffer = null;
+  G.afterMoveDoubleBy = null;
+  G.smallGameAnnounced = false;
+  G.smallGameAccepted = false;
+  G.trumpSevenDecisions = [];
+  G.trumpSelectionPassedCount = 0;
+  G.meldContest = null;
+  G.pendingDealerSequence = false;
+  G.announcedBella = [];
+  G.shownMelds = [];
+  G.currentTrick = { leadPlayer: G.vorne, cards: {}, winner: null };
+  G.pastTricks = [];
+  G.trickWinner = null;
+  G.timeoutCard = null;
+  G.trickDisplayUntil = null;
+  G.extraDealStartedAt = null;
+  G.extraDealUntil = null;
+  G.deadlineAt = null;
+  G.meldAnnouncement = null;
+}
+
+export function emptyScoreDetails() {
+  return {
+    '0': { tricks: 0, trickCount: 0, melds: 0, terz: 0, fifty: 0, bella: 0, jass: 0, mi: 0, lastTrick: 0 },
+    '1': { tricks: 0, trickCount: 0, melds: 0, terz: 0, fifty: 0, bella: 0, jass: 0, mi: 0, lastTrick: 0 },
+  };
+}
+
+function emptyHands(): Record<PlayerID, Card[]> {
+  return { '0': [], '1': [] };
+}
+
+function alternatingOrder() {
+  return {
+    first: ({ G }: { G: JassState }) => Number(G.vorne),
+    next: ({ ctx }: { ctx: { playOrderPos: number; numPlayers: number } }) =>
+      (ctx.playOrderPos + 1) % ctx.numPlayers,
+  };
+}

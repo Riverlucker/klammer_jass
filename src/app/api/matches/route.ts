@@ -1,39 +1,61 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/db';
 import { InitializeGame } from 'boardgame.io/internal';
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/db';
+import { toPrismaJson } from '@/db/json';
 import { JassGame } from '@/game/logic';
+import { createPlayerToken, normalizePlayerName, setMatchCookie } from '@/lib/auth';
+import { createMatchSchema } from '@/lib/apiSchemas';
+import { databaseErrorResponse } from '@/lib/databaseErrors';
+import { authenticatePlayer, PlayerLoginError } from '@/lib/playerAccounts';
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json();
-    const { targetScore, schneiderRule, cubeEnabled } = body;
+    const parsed = createMatchSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Ungültige Match-Einstellungen.' }, { status: 400 });
+    }
 
-    // 1. Create initial state
-    const initialState = InitializeGame({ game: JassGame, numPlayers: 2 });
-
-    // 2. Save match metadata
-    const match = await prisma.match.create({
-      data: {
-        targetScore: parseInt(targetScore) || 301,
-        schneiderRule: schneiderRule || 'yes',
-        cubeEnabled: cubeEnabled === 'enabled',
-        status: 'waiting',
-      },
+    const { playerName, password, ...settings } = parsed.data;
+    const displayName = normalizePlayerName(playerName).name;
+    const { token, tokenHash } = createPlayerToken();
+    const initialState = InitializeGame({
+      game: JassGame,
+      numPlayers: 2,
+      setupData: { ...settings, playerNames: { '0': displayName, '1': null } },
     });
 
-    // 3. Save initial game state
-    await prisma.game.create({
-      data: {
-        id: match.id, // We use the same ID for simplicity
-        matchId: match.id,
-        state: initialState as any,
-      }
+    const match = await prisma.$transaction(async (transaction) => {
+      const player = await authenticatePlayer(transaction, playerName, password);
+      const createdMatch = await transaction.match.create({
+        data: {
+          targetScore: settings.targetScore,
+          schneiderRule: settings.schneiderRule,
+          cubeEnabled: settings.cubeEnabled,
+          bet: settings.stake,
+          player1Id: player.id,
+          player1TokenHash: tokenHash,
+          status: 'waiting',
+        },
+      });
+      await transaction.game.create({
+        data: {
+          id: createdMatch.id,
+          matchId: createdMatch.id,
+          state: toPrismaJson(initialState),
+        },
+      });
+      return createdMatch;
     });
 
-    return NextResponse.json({ success: true, matchId: match.id });
-
-  } catch (error: any) {
-    console.error('Error creating match:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error', stack: error.stack }, { status: 500 });
+    const response = NextResponse.json({ success: true, matchId: match.id, playerId: '0' });
+    setMatchCookie(response, match.id, token);
+    return response;
+  } catch (error: unknown) {
+    if (error instanceof PlayerLoginError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error('Match konnte nicht erstellt werden:', error);
+    const response = databaseErrorResponse(error, 'Match konnte nicht erstellt werden.');
+    return NextResponse.json({ error: response.message }, { status: response.status });
   }
 }

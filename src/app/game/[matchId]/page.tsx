@@ -1,398 +1,1283 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
-import { useJassGame } from '../useJassGame';
-import { Card, Suit, TRUMP_ORDER, NON_TRUMP_ORDER } from '@/game/constants';
-import { MeldType } from '@/game/types';
-import { isMoveLegal } from '@/game/validation';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { NON_TRUMP_ORDER, RANKS, SUITS, TRUMP_ORDER, type Card, type Suit } from '@/game/constants';
+import { groupChatMessages } from '@/game/chatGroups';
+import { revealedMeldCards } from '@/game/meldReveal';
+import { extraCardPhase } from '@/game/extraDeal';
+import { canExchangeTrumpSeven } from '@/game/trumpSeven';
+import {
+  otherPlayer,
+  type MeldDecision,
+  type MeldType,
+  type PlayerID,
+  type PlayerJassState,
+  type ScoreDetails,
+  type ChatMessage,
+  type Trick,
+} from '@/game/types';
+import { getGoodMeldReplyOptions, meldReplySeed } from '@/game/meldReplies';
+import {
+  getAvailableMeldTypes,
+  getBestSequenceMeld,
+  getExpectedMeldResponse,
+  isMoveLegal,
+} from '@/game/validation';
+import {
+  MELD_DECISION_LABELS,
+  MELD_RESPONSE_LABELS,
+  useJassGame,
+} from '../useJassGame';
+import styles from './game.module.css';
 
-function createMoveAction(moveName: string, args: any[], playerId: string) {
-  return {
-    type: 'MAKE_MOVE',
-    payload: {
-      type: moveName,
-      args,
-      playerID: playerId,
-    }
+const SUIT_SYMBOLS: Record<Suit, string> = { Spades: '♠', Hearts: '♥', Diamonds: '♦', Clubs: '♣' };
+const SUIT_NAMES: Record<Suit, string> = { Spades: 'Pik', Hearts: 'Herz', Diamonds: 'Karo', Clubs: 'Kreuz' };
+const PHASE_NAMES: Record<string, string> = {
+  waitingRoom: 'Warteraum',
+  deal: 'Geben',
+  trumpSelection: 'Trumpf wählen',
+  trumpExchange: 'Räubern',
+  playing: 'Stich spielen',
+  endOfHand: 'Hand beendet',
+  endOfGame: 'Spiel beendet',
+};
+
+export default function GamePage() {
+  const { matchId } = useParams<{ matchId: string }>();
+  const router = useRouter();
+  const {
+    state,
+    playerId,
+    loading,
+    isSending,
+    isChatSending,
+    error,
+    remainingMilliseconds,
+    remainingSeconds,
+    trickDisplayMilliseconds,
+    extraDealMilliseconds,
+    extraDealElapsedMilliseconds,
+    now,
+    clearError,
+    dispatchMove: sendMove,
+    sendChat,
+  } = useJassGame(matchId);
+  const [pendingSelection, setPendingSelection] = useState<{ card: Card; turn: number } | null>(null);
+  const pendingCard = state && state.ctx.currentPlayer === playerId && state.ctx.phase === 'playing'
+    && pendingSelection?.turn === state.ctx.turn && (!state.G.meldContest || state.G.meldContest.stage === 'dealerPlay')
+    && state.G.hands[playerId!].some((card) => sameCard(card, pendingSelection.card))
+    ? pendingSelection.card : null;
+  const [selectedMelds, setSelectedMelds] = useState<MeldType[]>([]);
+  const [copied, setCopied] = useState(false);
+  const dispatchMove: DispatchMove = async (move, args = []) => {
+    const success = await sendMove(move, args);
+    if (success && move === 'endMatch') router.replace('/');
+    return success;
   };
-}
 
-const suitSymbols = { 'Spades': '♠', 'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣' };
-const suitColors = { 'Spades': 'black', 'Hearts': 'red', 'Diamonds': 'red', 'Clubs': 'black' };
+  if (loading) return <CenteredState title="Karten werden gemischt …" detail="Der aktuelle Spielstand wird sicher geladen." />;
+  if (!state || !playerId) {
+    return <CenteredState title="Kein Zugang zu diesem Tisch" detail={error ?? 'Das Match konnte nicht geladen werden.'} action />;
+  }
 
-function sortHand(hand: Card[], trumpSuit: Suit | null): Card[] {
-  const suitOrder: Suit[] = ['Spades', 'Hearts', 'Clubs', 'Diamonds'];
-  return [...hand].sort((a, b) => {
-    if (a.suit !== b.suit) return suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit);
-    const order = (a.suit === trumpSuit) ? TRUMP_ORDER : NON_TRUMP_ORDER;
-    return order.indexOf(b.rank) - order.indexOf(a.rank);
-  });
-}
+  const activePlayerId: PlayerID = playerId;
+  const { G, ctx } = state;
+  const opponentId: PlayerID = playerId === '0' ? '1' : '0';
+  const fullHand = G.hands[playerId];
+  const extraDealActive = extraDealMilliseconds > 0 && extraDealElapsedMilliseconds !== null;
+  const extraDealCards = extraDealActive ? fullHand.slice(-3) : [];
+  const extraElapsed = extraDealElapsedMilliseconds ?? 0;
+  const extraCardPhases = extraDealCards.map((_, index) => extraCardPhase(index, extraElapsed));
+  const revealedExtraCardCount = extraCardPhases.filter((phase) => phase !== 'back').length;
+  const allExtraCardsInserted = extraDealActive && extraCardPhases.every((phase) => phase === 'inserted');
+  const insertedExtraCards = allExtraCardsInserted ? extraDealCards : [];
+  const trumpSevenHint = ctx.phase === 'trumpExchange' && canExchangeTrumpSeven(G, playerId)
+    ? ' Danach kannst du die offene Karte mit deiner passenden 7 tauschen.'
+    : '';
+  const baseHand = extraDealActive
+    ? fullHand.filter((card) => !extraDealCards.some((extra) => sameCard(card, extra)))
+    : fullHand;
+  const hand = sortHand([...baseHand, ...insertedExtraCards], G.trump);
+  const myTurn = ctx.currentPlayer === playerId;
+  const gameOver = Boolean(G.matchResult || ctx.gameover !== undefined);
+  const inspectedTrick = trickDisplayMilliseconds > 0 && G.inspectingLastTrick ? G.pastTricks.at(-1) ?? null : null;
+  const presentedTrick = trickDisplayMilliseconds > 0 && !G.inspectingLastTrick ? G.pastTricks.at(-1) ?? null : null;
+  const tableTrick = presentedTrick ?? G.currentTrick;
+  const hasTableTrick = Object.keys(tableTrick.cards).length > 0;
+  const presentedWinner = presentedTrick?.winner ?? null;
+  const collectingTrick = trickDisplayMilliseconds > 0 && trickDisplayMilliseconds <= 700;
+  const settlementVisible = !presentedTrick && (ctx.phase === 'endOfHand' || ctx.phase === 'endOfGame');
+  const canDouble = trickDisplayMilliseconds <= 0 && !extraDealActive && canPlayerDouble(G, ctx.phase ?? null, ctx.currentPlayer, playerId);
+  const cardsBlocked = trickDisplayMilliseconds > 0 || extraDealActive || cardPlayBlocked(G, playerId);
+  const myVisibleTricks = Math.max(0, trickCount(G.pastTricks, playerId) - (presentedWinner === playerId ? 1 : 0));
+  const opponentVisibleTricks = Math.max(0, trickCount(G.pastTricks, opponentId) - (presentedWinner === opponentId ? 1 : 0));
+  const deadline = {
+    remainingMilliseconds,
+    totalSeconds: G.cubeOffer ? G.settings.cubeTimeSeconds : G.settings.moveTimeSeconds,
+  };
+  const avatarSpeech = latestAvatarSpeech(G.chatMessages ?? [], now);
 
-function CardView({ card, onClick, disabled }: { card: Card, onClick?: () => void, disabled?: boolean }) {
-  const isRed = card.suit === 'Hearts' || card.suit === 'Diamonds';
-  const symbol = suitSymbols[card.suit];
-  
+  async function copyInvite() {
+    try {
+      await navigator.clipboard.writeText(matchId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // The visible ID remains selectable when clipboard access is unavailable.
+    }
+  }
+
+  function availableMeldsFor(card: Card): MeldType[] {
+    if (!G.trump) return [];
+    return getAvailableMeldTypes(fullHand, G.trump, activePlayerId).filter((type) => {
+      if (type === 'Bella') {
+        return !G.announcedBella.includes(activePlayerId) && card.suit === G.trump && (card.rank === 'K' || card.rank === 'Q');
+      }
+      return G.pastTricks.length === 0 && !G.meldContest;
+    });
+  }
+
+  function selectCard(card: Card, legal: boolean) {
+    if (!legal || !myTurn || isSending || cardsBlocked) return;
+    const melds = availableMeldsFor(card);
+    if (melds.length === 0) {
+      void dispatchMove('playCard', [card]);
+      return;
+    }
+    setPendingSelection({ card, turn: ctx.turn });
+    setSelectedMelds(melds);
+    void dispatchMove('prepareCard', [card, melds]).then((saved) => { if (!saved) setPendingSelection(null); });
+  }
+
+  function toggleMeld(type: MeldType) {
+    if (!pendingCard || isSending) return;
+    const melds = selectedMelds.includes(type) ? selectedMelds.filter((item) => item !== type)
+      : type === 'Bella' ? [...selectedMelds, type] : [...selectedMelds.filter((item) => item === 'Bella'), type];
+    setSelectedMelds(melds);
+    void dispatchMove('prepareCard', [pendingCard, melds]).then((saved) => { if (!saved) setSelectedMelds(selectedMelds); });
+  }
+
+  async function confirmCard() {
+    if (!pendingCard) return;
+    const success = await dispatchMove('playCard', [pendingCard, selectedMelds]);
+    if (success) {
+      setPendingSelection(null);
+      setSelectedMelds([]);
+    }
+  }
+
   return (
-    <div 
-      onClick={disabled ? undefined : onClick}
-      className={`playing-card animate-deal ${isRed ? 'red' : 'black'} ${disabled ? 'disabled' : ''}`}
-    >
-      <div className="corner top">
-        <span>{card.rank}</span>
-        <span>{symbol}</span>
+    <main className={styles.page}>
+      <header className={styles.header}>
+        <div className={styles.headerContext}>
+          <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[ctx.phase ?? ''] ?? 'Match beendet'}</p>
+          <div className={styles.matchId}>
+            <span title={matchId}>{shortId(matchId)}</span>
+            <button type="button" onClick={copyInvite}>{copied ? 'Kopiert' : 'ID kopieren'}</button>
+          </div>
+        </div>
+        <div className={styles.headerScoreStrip}>
+          <div className={styles.headerPlayer} data-side="left">
+            <small>Spieler 1</small>
+            <strong>{gamePlayerName(G, '0')}</strong>
+          </div>
+          <ScoreBoard G={G} />
+          <div className={styles.headerPlayer} data-side="right">
+            <small>Spieler 2</small>
+            <strong>{gamePlayerName(G, '1')}</strong>
+          </div>
+        </div>
+        <div className={styles.headerStatus}>
+          <Deadline seconds={remainingSeconds} cube={Boolean(G.cubeOffer)} trickDisplayMilliseconds={trickDisplayMilliseconds} extraDealMilliseconds={extraDealMilliseconds} />
+        </div>
+      </header>
+
+      {error && (
+        <div className="notice notice-error" role="alert">
+          <span>{error}</span>
+          <button type="button" className={styles.dismiss} onClick={clearError} aria-label="Fehlermeldung schließen">×</button>
+        </div>
+      )}
+
+      {gameOver ? (
+        <MatchEnd G={G} playerId={playerId} />
+      ) : ctx.phase === 'waitingRoom' ? (
+        <WaitingRoom G={G} playerId={playerId} isSending={isSending} onReady={() => void dispatchMove('setReady')} />
+      ) : (
+        <div className={styles.gameLayout} data-settlement={settlementVisible}>
+          <section
+            className={styles.table}
+            data-game-table
+            data-settlement={settlementVisible}
+            data-static-settlement={settlementVisible && G.matchPaused}
+          >
+          <OpponentArea
+            name={gamePlayerName(G, opponentId)}
+            count={G.handCounts[opponentId]}
+            revealedCards={revealedMeldCards(G, opponentId, now)}
+            tricks={opponentVisibleTricks}
+            inspectedTrick={inspectedTrick?.winner === opponentId ? inspectedTrick : null}
+            speech={avatarSpeech?.playerId === opponentId ? avatarSpeech : null}
+          />
+
+          <div className={styles.center}>
+            <div className={styles.tableScene}>
+              {!settlementVisible && (
+                <TalonAndOriginal
+                  card={G.revealedCard}
+                  talonCount={G.talonCount}
+                  tucked={G.contract === 'small'}
+                />
+              )}
+              <div className={styles.trickSlot}>
+                {hasTableTrick && (
+                  <CurrentTrick
+                    trick={tableTrick}
+                    playerId={playerId}
+                    collecting={Boolean(presentedTrick) && collectingTrick}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <section className={styles.playerArea} aria-label="Deine Hand">
+            {canDouble && !G.cubeOffer && (
+              <div className={styles.playerActions}>
+                <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>
+                  {G.afterMoveDoubleBy === playerId && !myTurn ? 'Nach dem Zug drehen' : 'Vor dem Zug drehen'}
+                </button>
+              </div>
+            )}
+            <div className={styles.playerActionField}>
+            {extraDealActive ? (
+              <StatusCard
+                title="Drei neue Karten"
+                detail={allExtraCardsInserted
+                  ? `Alle drei Karten werden gemeinsam in deine Hand eingeordnet.${trumpSevenHint}`
+                  : revealedExtraCardCount === 0
+                    ? `Alle drei Karten liegen verdeckt rechts neben deiner Hand.${trumpSevenHint}`
+                    : `Karte ${revealedExtraCardCount} von 3 wurde aufgedeckt.${trumpSevenHint}`}
+              />
+            ) : ctx.phase === 'trumpExchange' ? (
+              <TrumpSevenExchange G={G} playerId={playerId} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
+            ) : G.matchPaused ? (
+              <PausedMatch G={G} playerId={playerId} isSending={isSending} onResume={() => void dispatchMove('resumeMatch')} onEnd={() => void dispatchMove('endMatch')} />
+            ) : ctx.phase === 'endOfGame' ? (
+              presentedTrick
+                ? null
+                : <GameEnd G={G} playerId={playerId} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
+            ) : (
+              <>
+                <TableStatus G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
+                {ctx.phase === 'playing' && <MeldExchange G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
+                {ctx.phase === 'endOfHand' && !presentedTrick && (
+                  <HandEnd G={G} playerId={playerId} isSending={isSending} onReady={() => void dispatchMove('nextHand')} deadline={deadline} />
+                )}
+              </>
+            )}
+            </div>
+            <div className={styles.playerCardsRow}>
+              <PlayerIdentity name={gamePlayerName(G, playerId)} owner="self" speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
+              <div className={styles.hand}>
+                {hand.map((card) => {
+                  const leadCard = G.currentTrick.cards[G.currentTrick.leadPlayer];
+                  const legal = ctx.phase === 'playing' && Boolean(G.trump) && isMoveLegal(
+                    card,
+                    fullHand,
+                    Object.values(G.currentTrick.cards).filter(isDefined),
+                    leadCard?.suit ?? null,
+                    G.trump!,
+                  );
+                  const highlighted = legal && myTurn && !isSending && !cardsBlocked;
+                  const timeoutSelected = highlighted && Boolean(G.timeoutCard) && sameCard(card, G.timeoutCard!);
+                  const freshlyDealt = extraDealActive && insertedExtraCards.some((extra) => sameCard(card, extra));
+                  return (
+                    <CardView
+                      key={`${card.suit}-${card.rank}`}
+                      card={card}
+                      disabled={!legal || !myTurn || isSending || cardsBlocked}
+                      highlighted={highlighted}
+                      freshlyDealt={freshlyDealt}
+                      preserveColor={extraDealActive}
+                      deadline={timeoutSelected ? deadline : undefined}
+                      onClick={() => selectCard(card, legal)}
+                    />
+                  );
+                })}
+                {extraDealActive && !allExtraCardsInserted && (
+                  <div className={styles.extraCards} aria-label="Drei neue Karten rechts neben der Hand">
+                    {extraDealCards.map((card, index) => extraCardPhases[index] === 'back' ? (
+                      <div className={`${styles.card} ${styles.extraCardBack}`} key={`${card.suit}-${card.rank}`} aria-label={`Zusatzkarte ${index + 1} verdeckt`}><i /></div>
+                    ) : (
+                      <CardView key={`${card.suit}-${card.rank}`} card={card} displayOnly extraReveal />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <TrickPile count={myVisibleTricks} owner="self" inspectedTrick={inspectedTrick?.winner === playerId ? inspectedTrick : null} onInspect={ctx.phase === 'playing' && G.pastTricks.at(-1)?.winner === playerId && trickDisplayMilliseconds <= 0 && !extraDealActive && !G.cubeOffer && !G.matchPaused && !isSending ? () => void dispatchMove('inspectLastTrick') : undefined} />
+          </section>
+          </section>
+          <ChatBox
+            messages={G.chatMessages ?? []}
+            playerId={playerId}
+            playerNames={G.playerNames}
+            isSending={isChatSending}
+            onSend={sendChat}
+          />
+        </div>
+      )}
+
+      {pendingCard && G.trump && (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="meld-title">
+            <p className="eyebrow">Meldung</p>
+            <h2 id="meld-title">Meldung ansagen?</h2>
+            <p>Alle verfügbaren Meldungen sind standardmäßig aktiviert. Eine Folgenmeldung umfasst nach dem Vergleich alle deine gültigen Terze und Fünfziger.</p>
+            <div className={styles.meldChoices}>
+              {availableMeldsFor(pendingCard).map((type) => (
+                <label key={type}>
+                  <input type="checkbox" checked={selectedMelds.includes(type)} disabled={isSending} onChange={() => toggleMeld(type)} />
+                  <span>{type} · {type === 'Fünfzig' ? 50 : 20} Punkte</span>
+                </label>
+              ))}
+            </div>
+            <div className="button-row">
+              <button className="button button-primary" type="button" disabled={isSending} onClick={() => void confirmCard()}>Karte legen</button>
+              <button className="button" type="button" disabled={isSending} onClick={() => { void dispatchMove('prepareCard').then((saved) => { if (saved) setPendingSelection(null); }); }}>Abbrechen</button>
+            </div>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}
+
+type DispatchMove = ReturnType<typeof useJassGame>['dispatchMove'];
+type DeadlineInfo = {
+  remainingMilliseconds: number | null;
+  totalSeconds: number;
+};
+
+function TableStatus({ G, playerId, myTurn, isSending, dispatchMove, deadline }: {
+  G: PlayerJassState;
+  playerId: PlayerID;
+  myTurn: boolean;
+  isSending: boolean;
+  dispatchMove: DispatchMove;
+  deadline: DeadlineInfo;
+}) {
+  if (G.cubeOffer) {
+    if (G.cubeOffer.from === playerId) {
+      return (
+        <StatusCard title="Würfel angeboten" detail="Der Gegner entscheidet über die Verdopplung.">
+          <TimeoutNotice deadline={deadline}>Bei 0 gibt der Gegner dieses Spiel automatisch auf.</TimeoutNotice>
+        </StatusCard>
+      );
+    }
+    return (
+      <StatusCard title="Würfel angeboten" detail={`Der Einsatz soll von ${G.cube.value} auf ${G.cube.value * 2} steigen.`}>
+        <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('acceptCube')}>Annehmen</button>
+        <TimedDecision deadline={deadline} label="Automatisch bei 0">
+          <button className="button button-danger" type="button" disabled={isSending} onClick={() => void dispatchMove('declineCube')}>Spiel aufgeben</button>
+        </TimedDecision>
+      </StatusCard>
+    );
+  }
+
+  if (G.trump === null) {
+    return <TrumpSelection G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />;
+  }
+
+  const turnSeconds = deadline.remainingMilliseconds === null
+    ? null
+    : Math.ceil(deadline.remainingMilliseconds / 1000);
+
+  return (
+    <div className={styles.playStatus}>
+      <div>
+        <p className="eyebrow">Trumpf</p>
+        <strong className={isRedSuit(G.trump) ? styles.redSuit : ''}>{SUIT_SYMBOLS[G.trump]} {SUIT_NAMES[G.trump]}</strong>
+        <span>{G.contract === 'original' ? 'Original' : 'Kleines'} · {G.declarer ? gamePlayerName(G, G.declarer) : '–'}</span>
       </div>
-      <div className="center-suit">
-        {symbol}
+      <div
+        className={styles.turnIndicator}
+        data-active={myTurn}
+        data-urgent={myTurn && turnSeconds !== null && turnSeconds <= 5}
+        style={myTurn ? timeoutStyle(deadline) : undefined}
+      >
+        <span>{myTurn ? 'Dein Zug' : 'Gegner ist am Zug'}</span>
+        {myTurn && turnSeconds !== null && <small aria-live="polite">{turnSeconds}s</small>}
+        {myTurn && turnSeconds !== null && <i aria-hidden="true" />}
       </div>
-      <div className="corner bottom">
-        <span>{card.rank}</span>
-        <span>{symbol}</span>
-      </div>
+      <small>{G.shownMelds.length > 0 ? `${G.shownMelds.length} Meldung(en) gezeigt` : 'Noch keine Meldung gezeigt'}</small>
     </div>
   );
 }
 
-export default function GamePage() {
-  const params = useParams();
-  const matchId = params.matchId as string;
-  const [playerId, setPlayerId] = useState<string | null>(null);
-
-  // Local UI State
-  const [pendingCardToPlay, setPendingCardToPlay] = useState<Card | null>(null);
-  const [selectedMeldType, setSelectedMeldType] = useState<MeldType | 'None'>('None');
-
-  const [showLastTrick, setShowLastTrick] = useState(false);
-  const [endOfHandTimer, setEndOfHandTimer] = useState(10);
-  const previousTrickCount = useRef(0);
-
-  useEffect(() => {
-    setPlayerId(localStorage.getItem(`jass_player_${matchId}`) || '0');
-  }, [matchId]);
-
-  const { state, loading, dispatchMove } = useJassGame(matchId, playerId);
-
-  useEffect(() => {
-    if (state?.G.pastTricks && state.G.pastTricks.length > previousTrickCount.current) {
-      setShowLastTrick(true);
-      const timer = setTimeout(() => setShowLastTrick(false), 1500);
-      previousTrickCount.current = state.G.pastTricks.length;
-      return () => clearTimeout(timer);
+function MeldExchange({ G, playerId, myTurn, isSending, dispatchMove, deadline }: {
+  G: PlayerJassState;
+  playerId: PlayerID;
+  myTurn: boolean;
+  isSending: boolean;
+  dispatchMove: DispatchMove;
+  deadline: DeadlineInfo;
+}) {
+  const contest = G.meldContest;
+  if (!contest) return null;
+  if (contest.stage === 'awaitingResponse') {
+    if (playerId !== G.dealer || !myTurn) {
+      return (
+        <StatusCard title={`${contest.frontType} gemeldet`} detail="Der Spieler am Button muss antworten.">
+          <TimeoutNotice deadline={deadline}>Bei 0 wird die regelkonforme Antwort automatisch gegeben.</TimeoutNotice>
+        </StatusCard>
+      );
     }
-  }, [state?.G.pastTricks]);
-
-  useEffect(() => {
-    if (state?.ctx.phase === 'endOfHand') {
-      const isReady = state.G.readyPlayers.includes(playerId || '0');
-      if (isReady) return;
-      
-      if (endOfHandTimer > 0) {
-        const timerId = setTimeout(() => setEndOfHandTimer(prev => prev - 1), 1000);
-        return () => clearTimeout(timerId);
-      } else {
-        dispatchMove(createMoveAction('nextHand', [playerId!], playerId!));
-      }
-    } else {
-      setEndOfHandTimer(10); // reset for next time
+    const automaticResponse = G.trump
+      ? getExpectedMeldResponse(contest.frontType, firstTrickHand(G, G.dealer), G.trump, G.dealer)
+      : null;
+    if (automaticResponse === 'good') {
+      const replyOptions = getGoodMeldReplyOptions(meldReplySeed(G.gameNumber, G.handNumber, G.dealer));
+      return (
+        <StatusCard title={`${contest.frontType} gemeldet`} detail="Du kannst nicht höher melden – such dir eine passende Antwort aus.">
+          {replyOptions.map((reply, index) => (
+            index === 0 ? (
+              <TimedDecision key={reply} deadline={deadline} label="Automatisch bei 0">
+                <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('respondMeld', ['good', reply])}>{reply}</button>
+              </TimedDecision>
+            ) : (
+              <button key={reply} className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('respondMeld', ['good', reply])}>{reply}</button>
+            )
+          ))}
+        </StatusCard>
+      );
     }
-  }, [state?.ctx.phase, endOfHandTimer, state?.G.readyPlayers, playerId]);
-
-  if (loading || !state) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'white' }}>Lade Spiel...</div>;
-  }
-
-  const { G, ctx } = state;
-  const opponentId = playerId === '0' ? '1' : '0';
-  const myHand: Card[] = G.hands ? G.hands[playerId || '0'] || [] : [];
-  const opponentHandCount = G.hands ? G.hands[opponentId]?.length || 0 : 0;
-  const isMyTurn = ctx.currentPlayer === playerId;
-
-  // Sorting
-  const sortedHand = sortHand(myHand, G.trump);
-
-  // Waiting Room Phase
-  if (ctx.phase === 'waitingRoom') {
-    const isReady = G.readyPlayers.includes(playerId || '0');
+    if (!automaticResponse) return null;
+    const responseLabel = MELD_RESPONSE_LABELS[automaticResponse];
     return (
-      <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: '1rem' }}>
-        <h2>Warten auf Spieler...</h2>
-        <p>{G.readyPlayers.length} / 2 Spieler bereit</p>
-        {!isReady && (
-          <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('setReady', [playerId!], playerId!))}>
-            Los gehts!
-          </button>
-        )}
-        {isReady && <p style={{ color: '#10b981' }}>Warten auf Gegner...</p>}
-      </div>
+      <StatusCard title={`${contest.frontType} gemeldet`} detail="Antworte entsprechend deiner besten Folge.">
+        <TimedDecision deadline={deadline} label="Automatisch bei 0">
+          <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('respondMeld', [automaticResponse])}>{responseLabel}</button>
+        </TimedDecision>
+      </StatusCard>
+    );
+  }
+  if (contest.stage === 'dealerPlay') {
+    const responseLabel = contest.response === 'good' && contest.replyComment
+      ? contest.replyComment
+      : MELD_RESPONSE_LABELS[contest.response!];
+    return (
+      <StatusCard title={responseLabel} detail={playerId === G.dealer ? 'Lege jetzt deine Karte für den ersten Stich.' : 'Der Gegner beendet den ersten Stich.'}>
+        <TimeoutNotice deadline={deadline}>{playerId === G.dealer
+          ? 'Bei 0 wird die gold umrandete Karte gespielt.'
+          : 'Bei 0 spielt der Gegner seine vorab ausgewählte erlaubte Karte.'}</TimeoutNotice>
+      </StatusCard>
+    );
+  }
+  if (contest.stage === 'awaitingFrontName') {
+    if (playerId !== G.vorne || !myTurn) {
+      return (
+        <StatusCard title="Meldungen vergleichen" detail="Der vordere Spieler nennt seine höchste Folge.">
+          <TimeoutNotice deadline={deadline}>Bei 0 wird die höchste Folge automatisch genannt.</TimeoutNotice>
+        </StatusCard>
+      );
+    }
+    return (
+      <StatusCard title="Höchste Folge nennen" detail="Nach dem ersten Stich wird jetzt der höchste Rang genannt.">
+        <TimedDecision deadline={deadline} label="Automatisch bei 0">
+          <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('nameMeld')}>Höchste Folge nennen</button>
+        </TimedDecision>
+      </StatusCard>
+    );
+  }
+  if (playerId !== G.dealer || !myTurn) {
+    return (
+      <StatusCard title={`Folge bis ${contest.namedRank ?? '…'}`} detail="Der Spieler am Button entscheidet, ob er höher ist.">
+        <TimeoutNotice deadline={deadline}>Bei 0 wird die regelkonforme Entscheidung automatisch getroffen.</TimeoutNotice>
+      </StatusCard>
+    );
+  }
+  const automaticDecision = expectedDealerDecision(G);
+  return (
+    <StatusCard title={`Folge bis ${contest.namedRank ?? '…'}`} detail="Zeige deine höhere Folge oder bestätige die erste Meldung.">
+      {(Object.entries(MELD_DECISION_LABELS) as [MeldDecision, string][]).map(([decision, label]) => (
+        decision === automaticDecision ? (
+          <TimedDecision key={decision} deadline={deadline} label="Automatisch bei 0">
+            <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('resolveMeldContest', [decision])}>{label}</button>
+          </TimedDecision>
+        ) : (
+          <button key={decision} className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('resolveMeldContest', [decision])}>{label}</button>
+        )
+      ))}
+    </StatusCard>
+  );
+}
+
+function TrumpSevenExchange({ G, playerId, isSending, dispatchMove, deadline }: {
+  G: PlayerJassState;
+  playerId: PlayerID;
+  isSending: boolean;
+  dispatchMove: DispatchMove;
+  deadline: DeadlineInfo;
+}) {
+  const undecidedPlayer = (['0', '1'] as PlayerID[]).find((id) => !(G.trumpSevenDecisions ?? []).includes(id));
+  if (undecidedPlayer !== playerId || !canExchangeTrumpSeven(G, playerId)) {
+    return (
+      <StatusCard
+        title="Räubern"
+        detail={`${undecidedPlayer ? gamePlayerName(G, undecidedPlayer) : 'Der andere Spieler'} entscheidet, ob die offene Karte getauscht wird.`}
+      />
     );
   }
 
-  const handlePlayCard = (card: Card, isLegal: boolean) => {
-    if (!isMyTurn || !isLegal || showLastTrick) return; // Prevent play while trick is showing
-
-    const isFirstTrick = G.pastTricks.length === 0;
-    
-    if (ctx.phase === 'playing' && isFirstTrick) {
-      setPendingCardToPlay(card);
-    } else if (ctx.phase === 'playing') {
-      dispatchMove(createMoveAction('playCard', [card], playerId!));
-    }
-  };
-
-  const confirmPlayAndMeld = () => {
-    if (pendingCardToPlay) {
-      const meldArg = selectedMeldType === 'None' ? undefined : selectedMeldType;
-      dispatchMove(createMoveAction('playCard', [pendingCardToPlay, meldArg], playerId!));
-      setPendingCardToPlay(null);
-      setSelectedMeldType('None');
-    }
-  };
-
-  const currentTrickToDisplay = showLastTrick 
-    ? G.pastTricks[G.pastTricks.length - 1].cards 
-    : G.currentTrick.cards;
-
-  const getTrickCount = (pId: string) => G.pastTricks.filter((t: any) => t.winner === pId).length;
-
   return (
-    <main style={{ padding: '1rem', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <header className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem 2rem', marginBottom: '1rem' }}>
-        <div>
-           <div style={{ fontSize: '0.875rem', color: '#cbd5e1' }}>Match ID: {matchId} | Du bist Spieler: {playerId}</div>
-           <div style={{ fontWeight: 'bold' }}>
-             Phase: {ctx.phase} {isMyTurn && <span style={{ color: 'var(--accent)' }}>(Du bist am Zug!)</span>}
-           </div>
-           <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-             {G.trump && <div style={{ color: suitColors[G.trump], fontWeight: 'bold' }}>Trumpf: {G.trump} {suitSymbols[G.trump]}</div>}
-             {G.revealedCard && (
-               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.7, fontSize: '0.8rem' }}>
-                 Ursprung: <div style={{ transform: 'scale(0.3)', transformOrigin: 'left center' }}><CardView card={G.revealedCard} disabled /></div>
-               </div>
-             )}
-           </div>
-           
-           {/* Show Melds */}
-           {G.shownMelds.length > 0 && (
-             <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#fbbf24' }}>
-               Meldungen: {G.shownMelds.map((m: any, i: number) => <span key={i}>P{m.player}: {m.type} </span>)}
-             </div>
-           )}
-        </div>
-        <div style={{ textAlign: 'right' }}>
-           <div style={{ fontSize: '0.875rem', color: '#cbd5e1' }}>Score (Match: {G.scores['0']}-{G.scores['1']})</div>
-           <div style={{ fontWeight: 'bold', fontSize: '1.25rem', color: '#10b981' }}>Hand: P0: {G.handScores['0']} - P1: {G.handScores['1']}</div>
-           
-           <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '1rem' }}>
-             <div style={{ padding: '0.25rem 0.5rem', border: '1px solid white', borderRadius: '4px' }}>
-                Würfel: {G.cube.value} {G.cube.holder && `(P${G.cube.holder})`}
-             </div>
-             {(!G.cubeOffer && (G.cube.holder === null || G.cube.holder === playerId)) && (
-               <button className="btn" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                       onClick={() => dispatchMove(createMoveAction('doubleCube', [], playerId!))}>
-                 Drehen
-               </button>
-             )}
-             {G.cubeOffer && G.cubeOffer.from !== playerId && (
-               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                 <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('acceptCube', [], playerId!))}>Annehmen</button>
-                 <button className="btn" style={{ background: 'red' }} onClick={() => dispatchMove(createMoveAction('declineCube', [], playerId!))}>Ablehnen</button>
-               </div>
-             )}
-           </div>
-        </div>
-      </header>
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-        
-        {/* Opponent Area */}
-        <div style={{ height: '120px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', position: 'relative' }}>
-          {getTrickCount(opponentId) > 0 && (
-             <div style={{ position: 'absolute', left: '20px', width: '60px', height: '90px', background: 'url(/card-back.png) center/cover, #222', borderRadius: '8px', border: '2px solid #555', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexDirection: 'column' }}>
-               <span style={{ fontSize: '0.7rem' }}>Stiche</span>
-               <span>{getTrickCount(opponentId)}</span>
-             </div>
-          )}
-          {Array.from({ length: opponentHandCount }).map((_, i) => (
-             <div key={i} style={{ width: '60px', height: '90px', background: 'url(/card-back.png) center/cover, var(--primary)', borderRadius: '8px', border: '2px solid white' }} />
-          ))}
-        </div>
-
-        {/* Play Area */}
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '2rem' }}>
-           
-           {/* END OF HAND PHASE UI */}
-           {ctx.phase === 'endOfHand' && (() => {
-             const details0 = G.handScoreDetails?.['0'] || { tricks: 0, melds: 0, lastTrick: 0 };
-             const details1 = G.handScoreDetails?.['1'] || { tricks: 0, melds: 0, lastTrick: 0 };
-             return (
-             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', width: '100%', maxWidth: '800px', maxHeight: '60vh', overflowY: 'auto', padding: '1rem' }}>
-               <div className="glass-panel" style={{ textAlign: 'center' }}>
-                  <h2 style={{ marginBottom: '1rem', color: '#fbbf24' }}>Hand Auswertung</h2>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '1rem', fontSize: '1rem', textAlign: 'left' }}>
-                    <div>
-                      <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Spieler 0: <strong>{G.handScores['0']}</strong></div>
-                      <div style={{ color: '#cbd5e1' }}>Stiche: {details0.tricks}</div>
-                      <div style={{ color: '#cbd5e1' }}>Meldungen: {details0.melds}</div>
-                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {details0.lastTrick}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Spieler 1: <strong>{G.handScores['1']}</strong></div>
-                      <div style={{ color: '#cbd5e1' }}>Stiche: {details1.tricks}</div>
-                      <div style={{ color: '#cbd5e1' }}>Meldungen: {details1.melds}</div>
-                      <div style={{ color: '#cbd5e1' }}>Letzter Stich: {details1.lastTrick}</div>
-                    </div>
-                  </div>
-                  
-                  <p style={{ marginBottom: '1rem' }}>{G.readyPlayers.length} / 2 bereit für nächste Hand (Weiter in {endOfHandTimer}s)</p>
-                  
-                  {!G.readyPlayers.includes(playerId || '0') ? (
-                    <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('nextHand', [playerId!], playerId!))}>
-                      Nächste Hand starten
-                    </button>
-                  ) : (
-                    <p style={{ color: '#10b981' }}>Warten auf Gegner...</p>
-                  )}
-               </div>
-
-               <div className="glass-panel">
-                 <h3 style={{ marginBottom: '1rem' }}>Alle Stiche dieser Hand</h3>
-                 <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem' }}>
-                   {G.pastTricks.map((trick: any, index: number) => (
-                     <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '8px' }}>
-                       <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>Stich {index + 1} (Gewinner: P{trick.winner})</span>
-                       <div style={{ display: 'flex', gap: '0.25rem' }}>
-                          <div style={{ transform: 'scale(0.6)', transformOrigin: 'top left', width: '54px', height: '81px' }}>
-                             <CardView card={trick.cards['0']} disabled />
-                          </div>
-                          <div style={{ transform: 'scale(0.6)', transformOrigin: 'top left', width: '54px', height: '81px' }}>
-                             <CardView card={trick.cards['1']} disabled />
-                          </div>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               </div>
-             </div>
-             );
-           })()}
-
-           {/* TRUMP SELECTION PHASE UI */}
-           {ctx.phase === 'trumpSelection' && (
-             <div style={{ textAlign: 'center' }}>
-                <h3 style={{ marginBottom: '1rem' }}>Trumpf-Verhandlung</h3>
-                {G.revealedCard && <div style={{ display: 'flex', justifyContent: 'center', margin: '0 auto 1rem auto' }}><CardView card={G.revealedCard} /></div>}
-                
-                {isMyTurn && G.trumpSelectionPassedCount < 2 && (
-                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                    <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('acceptOriginal', [], playerId!))}>Annehmen</button>
-                    <button className="btn" style={{ background: '#ef4444' }} onClick={() => dispatchMove(createMoveAction('decline', [], playerId!))}>Ablehnen</button>
-                  </div>
-                )}
-
-                {isMyTurn && G.trumpSelectionPassedCount === 2 && G.vorne === playerId && !G.smallGameAnnounced && (
-                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '300px' }}>
-                    <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('announceSmallGame', [], playerId!))}>Kleines Spiel ansagen</button>
-                    <button className="btn" style={{ background: '#ef4444' }} onClick={() => dispatchMove(createMoveAction('decline', [], playerId!))}>Schieben</button>
-                  </div>
-                )}
-
-                {isMyTurn && G.smallGameAnnounced && G.dealer === playerId && (
-                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                    <button className="btn btn-accent" onClick={() => dispatchMove(createMoveAction('acceptSmallGame', [], playerId!))}>Zulassen</button>
-                    <button className="btn" style={{ background: '#ef4444' }} onClick={() => dispatchMove(createMoveAction('overruleSmallGame', [], playerId!))}>Besser schlagen (Kreuz erzwingen)</button>
-                  </div>
-                )}
-
-                {isMyTurn && G.trumpSelectionPassedCount === 3 && G.dealer === playerId && (
-                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                    {['Spades', 'Hearts', 'Diamonds', 'Clubs'].filter(s => s !== G.revealedCard?.suit).map(suit => (
-                       <button key={suit} className="btn" onClick={() => dispatchMove(createMoveAction('chooseTrump', [suit], playerId!))}>
-                         {suitSymbols[suit as Suit]} wählen
-                       </button>
-                    ))}
-                    <button className="btn" style={{ background: '#ef4444' }} onClick={() => dispatchMove(createMoveAction('decline', [], playerId!))}>Abbrechen (Neu geben)</button>
-                  </div>
-                )}
-
-                {isMyTurn && G.smallGameAnnounced && G.vorne === playerId && G.trumpSelectionPassedCount === 2 /* after acceptSmallGame */ && (
-                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                     {['Spades', 'Hearts', 'Diamonds', 'Clubs'].filter(s => s !== G.revealedCard?.suit).map(suit => (
-                       <button key={suit} className="btn" onClick={() => dispatchMove(createMoveAction('chooseTrump', [suit], playerId!))}>
-                         {suitSymbols[suit as Suit]} wählen
-                       </button>
-                    ))}
-                  </div>
-                )}
-             </div>
-           )}
-
-           {/* PLAYING PHASE UI */}
-           {ctx.phase === 'playing' && (
-             <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column', alignItems: 'center' }}>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  {Object.entries(currentTrickToDisplay).map(([pId, card]: [string, any]) => (
-                     <div key={pId} style={{ transform: pId === playerId ? 'translateY(20px)' : 'translateY(-20px)' }}>
-                       <CardView card={card} />
-                     </div>
-                  ))}
-                </div>
-             </div>
-           )}
-        </div>
-
-        {/* Player Area */}
-        <div style={{ height: '160px', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '0.5rem', paddingBottom: '1rem', position: 'relative' }}>
-           
-           {getTrickCount(playerId || '0') > 0 && (
-             <div style={{ position: 'absolute', right: '20px', bottom: '20px', width: '60px', height: '90px', background: 'url(/card-back.png) center/cover, #222', borderRadius: '8px', border: '2px solid #555', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexDirection: 'column' }}>
-               <span style={{ fontSize: '0.7rem' }}>Stiche</span>
-               <span>{getTrickCount(playerId || '0')}</span>
-             </div>
-           )}
-
-           {/* Melding Dialog */}
-           {pendingCardToPlay && (
-             <div className="glass-panel" style={{ position: 'absolute', bottom: '160px', left: '50%', transform: 'translateX(-50%)', zIndex: 10, display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                {G.pendingMeld && G.pendingMeld.player !== playerId && (
-                   <span style={{ color: '#fbbf24', marginRight: '1rem' }}>Gegner hat {G.pendingMeld.type} gemeldet. Hast du auch was?</span>
-                )}
-                <span>Meldung?</span>
-                <select value={selectedMeldType} onChange={e => setSelectedMeldType(e.target.value as any)} style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', color: 'white' }}>
-                  <option value="None">Keine</option>
-                  <option value="Terz">Terz</option>
-                  <option value="Fünfzig">Fünfzig</option>
-                  <option value="Bella">Bella</option>
-                </select>
-                <button className="btn btn-accent" onClick={confirmPlayAndMeld}>Karte legen</button>
-                <button className="btn" onClick={() => setPendingCardToPlay(null)}>Abbrechen</button>
-             </div>
-           )}
-
-           {sortedHand.map((card, i) => {
-              const offset = Math.abs((sortedHand.length / 2) - 0.5 - i) * 5;
-              const rotation = (i - (sortedHand.length / 2) + 0.5) * 5;
-              
-              const leadPlayer = G.currentTrick?.leadPlayer;
-              const leadCard = leadPlayer ? G.currentTrick?.cards[leadPlayer] : null;
-              const leadSuit = leadCard ? leadCard.suit : null;
-              const trickCards = Object.values(G.currentTrick?.cards || {});
-
-              const isLegal = ctx.phase === 'playing' ? isMoveLegal(card, sortedHand, trickCards, leadSuit, G.trump!) : true;
-
-              return (
-                 <div key={`${card.suit}-${card.rank}`} style={{ transform: `translateY(${offset}px) rotate(${rotation}deg)`, zIndex: i }}>
-                   <CardView 
-                      card={card} 
-                      disabled={!isLegal || (ctx.phase === 'playing' && !isMyTurn)}
-                      onClick={() => handlePlayCard(card, isLegal)}
-                   />
-                 </div>
-              );
-           })}
-        </div>
-      </div>
-    </main>
+    <StatusCard title="Offene Karte nehmen?" detail="Du hast die 7 in der Farbe der offenen Karte. Tausche sie jetzt gegen die offene Originalkarte oder lasse beide Karten liegen.">
+      <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('exchangeTrumpSeven')}>
+        Mit der passenden 7 räubern
+      </button>
+      <TimedDecision deadline={deadline} label="Automatisch bei 0">
+        <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('keepTrumpSeven')}>
+          Karten liegen lassen
+        </button>
+      </TimedDecision>
+    </StatusCard>
   );
 }
+
+function TrumpSelection({ G, playerId, myTurn, isSending, dispatchMove, deadline }: {
+  G: PlayerJassState;
+  playerId: PlayerID;
+  myTurn: boolean;
+  isSending: boolean;
+  dispatchMove: DispatchMove;
+  deadline: DeadlineInfo;
+}) {
+  if (!myTurn) {
+    return (
+      <StatusCard title="Original" detail={originalDescription(G)}>
+        <TimeoutNotice deadline={deadline}>{trumpWaitingDefault(G)}</TimeoutNotice>
+      </StatusCard>
+    );
+  }
+  const disabled = isSending;
+
+  if (G.trumpSelectionPassedCount < 2) {
+    return (
+      <StatusCard title="Original spielen?" detail={originalDescription(G)}>
+        <button className="button button-primary" type="button" disabled={disabled} onClick={() => void dispatchMove('acceptOriginal')}>Annehmen</button>
+        <TimedDecision deadline={deadline} label="Automatisch bei 0">
+          <button className="button" type="button" disabled={disabled} onClick={() => void dispatchMove('decline')}>Nein</button>
+        </TimedDecision>
+      </StatusCard>
+    );
+  }
+
+  if (G.smallGameAnnounced && !G.smallGameAccepted && playerId === G.dealer) {
+    return (
+      <StatusCard title="Kleines angesagt" detail="Lässt du die freie Trumpfwahl zu oder sagst du Besser mit Kreuz?">
+        <TimedDecision deadline={deadline} label="Automatisch bei 0">
+          <button className="button button-primary" type="button" disabled={disabled} onClick={() => void dispatchMove('acceptSmallGame')}>OK</button>
+        </TimedDecision>
+        <button className="button" type="button" disabled={disabled} onClick={() => void dispatchMove('overruleSmallGame')}>Besser · Kreuz</button>
+      </StatusCard>
+    );
+  }
+
+  if (G.trumpSelectionPassedCount === 2 && playerId === G.vorne && !G.smallGameAnnounced) {
+    return (
+      <StatusCard title="Kleines?" detail="Sage ein Kleines an oder gib die freie Wahl zum Button weiter.">
+        <button className="button button-primary" type="button" disabled={disabled} onClick={() => void dispatchMove('announceSmallGame')}>Kleines ansagen</button>
+        <TimedDecision deadline={deadline} label="Automatisch bei 0">
+          <button className="button" type="button" disabled={disabled} onClick={() => void dispatchMove('decline')}>Nein</button>
+        </TimedDecision>
+      </StatusCard>
+    );
+  }
+
+  const mayChoose =
+    (G.smallGameAccepted && playerId === G.vorne) ||
+    (!G.smallGameAnnounced && G.trumpSelectionPassedCount === 3 && playerId === G.dealer);
+  if (mayChoose) {
+    const availableSuits = SUITS.filter((suit) => suit !== G.revealedCard?.suit);
+    const automaticSuit = G.smallGameAccepted ? availableSuits[0] : null;
+    return (
+      <StatusCard title="Trumpf wählen" detail="Die ursprüngliche Farbe steht in der zweiten Runde nicht zur Wahl.">
+        {availableSuits.map((suit) => (
+          suit === automaticSuit ? (
+            <TimedDecision key={suit} deadline={deadline} label="Automatisch bei 0">
+              <button className={`button ${isRedSuit(suit) ? styles.redSuit : ''}`} type="button" disabled={disabled} onClick={() => void dispatchMove('chooseTrump', [suit])}>
+                {SUIT_SYMBOLS[suit]} {SUIT_NAMES[suit]}
+              </button>
+            </TimedDecision>
+          ) : (
+            <button key={suit} className={`button ${isRedSuit(suit) ? styles.redSuit : ''}`} type="button" disabled={disabled} onClick={() => void dispatchMove('chooseTrump', [suit])}>
+              {SUIT_SYMBOLS[suit]} {SUIT_NAMES[suit]}
+            </button>
+          )
+        ))}
+        {!G.smallGameAnnounced && (
+          <TimedDecision deadline={deadline} label="Automatisch bei 0">
+            <button className="button" type="button" disabled={disabled} onClick={() => void dispatchMove('decline')}>Neu geben</button>
+          </TimedDecision>
+        )}
+      </StatusCard>
+    );
+  }
+  return <StatusCard title="Trumpfwahl" detail="Auswahl wird vorbereitet …" />;
+}
+
+function GameEnd({ G, playerId, isSending, dispatchMove, deadline }: {
+  G: PlayerJassState;
+  playerId: PlayerID;
+  isSending: boolean;
+  dispatchMove: DispatchMove;
+  deadline: DeadlineInfo;
+}) {
+  const result = G.gameResult;
+  if (!result) return null;
+  const nextReady = G.nextGamePlayers.includes(playerId);
+  return (
+    <section className={styles.gameEnd}>
+      <GameResultHero G={G} playerId={playerId} />
+      <p>{result.reason === 'cube-declined' ? 'Das Würfelangebot wurde abgelehnt.' : `Ziel von ${G.settings.targetScore} Augen erreicht.`}</p>
+      <div className={styles.breakdown}>
+        {(['0', '1'] as PlayerID[]).map((id) => (
+          <div key={id}><span>{gamePlayerName(G, id)}</span><strong>{result.finalScores[id]}</strong><small>Match +{result.awardedMatchPoints[id]}</small></div>
+        ))}
+      </div>
+      <TrickSettlement G={G} tricks={G.pastTricks} playerId={playerId} />
+      <SpecialScoreBreakdown G={G} playerId={playerId} />
+      {result.schneider && <div className="notice notice-success">Schneider: Matchpunkte verdoppelt</div>}
+      <TimeoutNotice deadline={deadline}>Bei 0 wird das Match automatisch pausiert.</TimeoutNotice>
+      <div className="button-row">
+        {!nextReady ? (
+          <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('nextGame')}>Nächstes Spiel</button>
+        ) : <div className={styles.pulse}>Warten auf den Gegner</div>}
+        <button className="button button-danger" type="button" disabled={isSending} onClick={() => void dispatchMove('endMatch')}>Match beenden</button>
+      </div>
+    </section>
+  );
+}
+
+function PausedMatch({ G, playerId, isSending, onResume, onEnd }: {
+  G: PlayerJassState;
+  playerId: PlayerID;
+  isSending: boolean;
+  onResume: () => void;
+  onEnd: () => void;
+}) {
+  const ready = G.resumePlayers.includes(playerId);
+  return (
+    <section className={styles.pausedMatch}>
+      <GameResultHero G={G} playerId={playerId} paused />
+      <div className={styles.pauseAction}>
+        <p><strong>Match pausiert.</strong> Beide Spieler müssen bestätigen, dass sie weiterspielen möchten.</p>
+        <div className="button-row">
+        {!ready
+          ? <button className="button button-primary" type="button" disabled={isSending} onClick={onResume}>Match fortsetzen</button>
+          : <div className={styles.pulse}>Warten auf den Gegner</div>}
+        <button className="button button-danger" type="button" disabled={isSending} onClick={onEnd}>Match beenden</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GameResultHero({ G, playerId, paused = false }: {
+  G: PlayerJassState;
+  playerId: PlayerID;
+  paused?: boolean;
+}) {
+  const result = G.gameResult;
+  if (!result) return null;
+  const opponent: PlayerID = playerId === '0' ? '1' : '0';
+  const outcome = result.winner === null ? 'draw' : result.winner === playerId ? 'win' : 'loss';
+  const title = outcome === 'draw'
+    ? `Spiel ${G.gameNumber} endet unentschieden`
+    : outcome === 'win' ? `Du gewinnst Spiel ${G.gameNumber}` : `${gamePlayerName(G, opponent)} gewinnt Spiel ${G.gameNumber}`;
+  return (
+    <section className={styles.resultHero} data-outcome={outcome} aria-label="Ergebnis und aktueller Matchstand">
+      <p className="eyebrow">{paused ? 'Letztes Ergebnis' : 'Spiel beendet'}</p>
+      <h2>{title}</h2>
+      <div className={styles.matchScoreHero}>
+        <div><span>{gamePlayerName(G, playerId)}</span><strong>{G.matchPoints[playerId]}</strong></div>
+        <div><small>Aktueller Matchstand</small><b>:</b></div>
+        <div><span>{gamePlayerName(G, opponent)}</span><strong>{G.matchPoints[opponent]}</strong></div>
+      </div>
+    </section>
+  );
+}
+
+function StatusCard({ title, detail, children }: { title: string; detail: string; children?: React.ReactNode }) {
+  return <div className={styles.statusCard}><p className="eyebrow">Am Tisch</p><h2>{title}</h2><p>{detail}</p>{children && <div className="button-row">{children}</div>}</div>;
+}
+
+function TalonAndOriginal({ card, talonCount, tucked }: { card: Card | null; talonCount: number; tucked: boolean }) {
+  if (!card) return null;
+  const stackSize = Math.min(3, Math.max(1, talonCount));
+  return (
+    <aside
+      className={styles.tableCards}
+      data-tucked={tucked}
+      aria-label={tucked
+        ? `Talon mit ${talonCount} Karten; die ungenommene offene Karte steckt darunter`
+        : `Talon mit ${talonCount} Karten und offene Originalkarte`}
+    >
+      <div className={styles.tableCardStack}>
+        <div className={`${styles.tableCardSlot} ${styles.talonSlot}`}>
+          <div className={styles.talon} aria-hidden="true">
+            {Array.from({ length: stackSize }, (_, index) => <i key={index} />)}
+            <b>{talonCount}</b>
+          </div>
+        </div>
+        <div className={`${styles.tableCardSlot} ${styles.originalCardSlot}`}>
+          <CardView card={card} displayOnly />
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function WaitingRoom({ G, playerId, isSending, onReady }: { G: PlayerJassState; playerId: PlayerID; isSending: boolean; onReady: () => void }) {
+  const ready = G.readyPlayers.includes(playerId);
+  return (
+    <section className={styles.waiting}>
+      <p className="eyebrow">Privater Tisch</p><h1>{ready ? `Warten auf ${gamePlayerName(G, playerId === '0' ? '1' : '0')}` : 'Bereit für das erste Spiel?'}</h1>
+      <p>{G.readyPlayers.length} von 2 Spielern sind bereit. Teile die Match-ID mit deinem Gegenüber.</p>
+      {!ready && <button className="button button-primary" type="button" disabled={isSending} onClick={onReady}>Ich bin bereit</button>}
+      {ready && <div className={styles.pulse}>Verbindung aktiv</div>}
+    </section>
+  );
+}
+
+function HandEnd({ G, playerId, isSending, onReady, deadline }: { G: PlayerJassState; playerId: PlayerID; isSending: boolean; onReady: () => void; deadline: DeadlineInfo }) {
+  const result = G.lastHandResult;
+  const ready = G.readyPlayers.includes(playerId);
+  return (
+    <section className={styles.handEnd}>
+      <p className="eyebrow">Hand abgeschlossen</p><h2>{result ? `${gamePlayerName(G, result.winner)} gewinnt die Hand` : 'Hand beendet'}</h2>
+      <div className={styles.breakdown}>
+        {(['0', '1'] as PlayerID[]).map((id) => <div key={id}><span>{gamePlayerName(G, id)}</span><strong>{result?.awardedScores[id] ?? G.handScores[id]}</strong><small>Gezählt {result?.baseScores[id] ?? 0}</small></div>)}
+      </div>
+      <TrickSettlement G={G} tricks={G.pastTricks} playerId={playerId} />
+      <SpecialScoreBreakdown G={G} playerId={playerId} />
+      {result?.declarerFailed && <div className="notice notice-success">Falte: Der Trumpfmacher erhält keine Augen.</div>}
+      {!ready ? (
+        <TimedDecision deadline={deadline} label="Automatisch bei 0">
+          <button className="button button-primary" type="button" disabled={isSending} onClick={onReady}>Bereit für Hand {G.handNumber + 1}</button>
+        </TimedDecision>
+      ) : (
+        <>
+          <div className={styles.pulse}>Warten auf den Gegner</div>
+          <TimeoutNotice deadline={deadline}>Bei 0 wird der Gegner automatisch bereit gemeldet.</TimeoutNotice>
+        </>
+      )}
+    </section>
+  );
+}
+
+function MatchEnd({ G, playerId }: { G: PlayerJassState; playerId: PlayerID }) {
+  const endedBy = G.matchResult?.endedBy;
+  const title = endedBy === playerId ? 'Du hast das Match verlassen.'
+    : endedBy ? `${gamePlayerName(G, endedBy)} hat das Match verlassen.` : 'Das Match ist beendet.';
+  return (
+    <section className={styles.matchEnd}>
+      <p className="eyebrow">Match beendet</p><h1>{title}</h1>
+      <p>Das Match wurde nach Spiel {G.gameNumber} beendet.</p>
+      <div className={styles.finalScore}><strong>{G.matchPoints[playerId]}</strong><span>:</span><strong>{G.matchPoints[playerId === '0' ? '1' : '0']}</strong></div>
+      <Link className="button button-primary" href="/">Zurück zur Lobby</Link>
+    </section>
+  );
+}
+
+function SpecialScoreBreakdown({ G, playerId }: { G: PlayerJassState; playerId: PlayerID }) {
+  const opponent: PlayerID = playerId === '0' ? '1' : '0';
+  return (
+    <section className={styles.specialBreakdown} aria-label="Sonderwertungen der letzten Hand">
+      <h3>Wertung der letzten Hand</h3>
+      <div>
+        {([playerId, opponent] as PlayerID[]).map((id) => (
+          <ScoreDetailList key={id} title={gamePlayerName(G, id)} details={G.handScoreDetails[id]} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ScoreDetailList({ title, details }: { title: string; details: ScoreDetails }) {
+  const jass = details.jass ?? 0;
+  const mi = details.mi ?? 0;
+  const rows = [
+    ['Übrige Kartenwerte', Math.max(0, details.tricks - jass - mi)],
+    ['Jass', jass],
+    ['Mi', mi],
+    ['Terz', details.terz ?? 0],
+    ['Fünfzig', details.fifty ?? 0],
+    ['Bella', details.bella ?? 0],
+    ['Letzter Stich', details.lastTrick],
+  ] as const;
+  return (
+    <div className={styles.scoreDetailList}>
+      <strong>{title}</strong>
+      <dl>
+        {rows.map(([label, value]) => (
+          <div key={label} data-empty={value === 0}><dt>{label}</dt><dd>+{value}</dd></div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function ScoreBoard({ G }: { G: PlayerJassState }) {
+  return (
+    <div className={styles.score} aria-label={`Augen ${G.scores['0']} zu ${G.scores['1']}, Match ${G.matchPoints['0']} zu ${G.matchPoints['1']}, Würfel ${G.cube.value}`}>
+      <span className={styles.scoreMatch}><small>Match</small><strong>{G.matchPoints['0']}<i>:</i>{G.matchPoints['1']}</strong></span>
+      <span className={styles.scoreEyes}><small>Augen</small><strong>{G.scores['0']}<i>:</i>{G.scores['1']}</strong></span>
+      <span className={styles.scoreCube}><small>Würfel</small><strong>{G.cube.value}</strong></span>
+    </div>
+  );
+}
+
+function Deadline({ seconds, cube, trickDisplayMilliseconds, extraDealMilliseconds }: { seconds: number | null; cube: boolean; trickDisplayMilliseconds: number; extraDealMilliseconds: number }) {
+  if (extraDealMilliseconds > 0) {
+    return <div className={styles.deadline}>Karten · {Math.ceil(extraDealMilliseconds / 1000)}s</div>;
+  }
+  if (trickDisplayMilliseconds > 0) {
+    return <div className={styles.deadline}>Stich · {Math.ceil(trickDisplayMilliseconds / 1000)}s</div>;
+  }
+  if (seconds === null) return null;
+  return <div className={styles.deadline} data-urgent={seconds <= 5} aria-live="polite">Noch {seconds}s · {cube ? 'Dreher' : 'Zug'}</div>;
+}
+
+function TimedDecision({ deadline, label, children }: { deadline: DeadlineInfo; label: string; children: React.ReactNode }) {
+  const seconds = deadline.remainingMilliseconds === null ? null : Math.ceil(deadline.remainingMilliseconds / 1000);
+  return (
+    <div
+      className={styles.timedDecision}
+      data-urgent={seconds !== null && seconds <= 5}
+      style={timeoutStyle(deadline)}
+    >
+      <div className={styles.timedButtonRing}>{children}</div>
+      <span>{label}{seconds === null ? '' : ` · ${seconds}s`}</span>
+    </div>
+  );
+}
+
+function ChatBox({ messages, playerId, playerNames, isSending, onSend }: {
+  messages: ChatMessage[];
+  playerId: PlayerID;
+  playerNames: Record<PlayerID, string | null>;
+  isSending: boolean;
+  onSend: (message: string) => Promise<boolean>;
+}) {
+  const [message, setMessage] = useState('');
+  const messageList = useRef<HTMLDivElement>(null);
+  const messageGroups = groupChatMessages(messages);
+  const latestMessageId = messages.at(-1)?.id;
+
+  useEffect(() => {
+    const list = messageList.current;
+    if (!list) return;
+    const scrollToLatest = () => { list.scrollTop = list.scrollHeight; };
+    scrollToLatest();
+    const frame = window.requestAnimationFrame(scrollToLatest);
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestMessageId]);
+
+  async function submitMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = message.trim();
+    if (!text || isSending) return;
+    if (await onSend(text)) setMessage('');
+  }
+
+  return (
+    <aside className={styles.chatPanel} aria-label="Tisch-Chat">
+      <header>
+        <div>
+          <p className="eyebrow">Am Tisch</p>
+          <h2>Spielverlauf &amp; Chat</h2>
+        </div>
+        <span aria-label={`${messages.length} Nachrichten`}>{messages.length}</span>
+      </header>
+      <div className={styles.chatMessages} ref={messageList} role="log" aria-live="polite">
+        {messages.length === 0 ? (
+          <p className={styles.emptyChat}>Der Dealer kommentiert hier Karten, Meldungen und Entscheidungen.</p>
+        ) : messageGroups.map((group) => {
+          const firstEntry = group.messages[0];
+          const isSelf = group.kind === 'player' && firstEntry.playerId === playerId;
+          return (
+            <article
+              className={styles.chatMessage}
+              data-kind={group.kind}
+              data-self={isSelf}
+              key={`${group.kind}-${firstEntry.id}`}
+            >
+              <div>
+                <strong>{group.kind === 'dealer' ? 'Dealer' : firstEntry.playerId ? playerNames[firstEntry.playerId] ?? (isSelf ? 'Du' : 'Gast') : 'Spieler'}</strong>
+                <time dateTime={new Date(firstEntry.createdAt).toISOString()}>{chatTime(firstEntry.createdAt)}</time>
+              </div>
+              {group.messages.map((entry) => <p key={entry.id}>{entry.text}</p>)}
+            </article>
+          );
+        })}
+      </div>
+      <form className={styles.chatForm} onSubmit={submitMessage}>
+        <label htmlFor="table-chat-message">Nachricht</label>
+        <div>
+          <input
+            id="table-chat-message"
+            type="text"
+            value={message}
+            maxLength={280}
+            placeholder="Etwas schreiben …"
+            autoComplete="off"
+            onChange={(event) => setMessage(event.target.value)}
+          />
+          <button className="button button-primary" type="submit" disabled={isSending || message.trim().length === 0}>
+            {isSending ? '…' : 'Senden'}
+          </button>
+        </div>
+        <small>{message.length}/280</small>
+      </form>
+    </aside>
+  );
+}
+
+function chatTime(timestamp: number): string {
+  return new Intl.DateTimeFormat('de-AT', { hour: '2-digit', minute: '2-digit' }).format(timestamp);
+}
+
+function TimeoutNotice({ deadline, children }: { deadline: DeadlineInfo; children: React.ReactNode }) {
+  const seconds = deadline.remainingMilliseconds === null ? null : Math.ceil(deadline.remainingMilliseconds / 1000);
+  if (seconds === null) return null;
+  return (
+    <div className={styles.timeoutNotice} data-urgent={seconds <= 5} style={timeoutStyle(deadline)}>
+      <span>{children}</span>
+      <strong aria-live="polite">{seconds}s</strong>
+      <i aria-hidden="true" />
+    </div>
+  );
+}
+
+function OpponentArea({ name, count, tricks, speech, revealedCards, inspectedTrick }: { name: string; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null }) {
+  return (
+    <section className={styles.opponent}>
+      <div className={styles.opponentCardsRow}>
+        <PlayerIdentity name={name} owner="opponent" speech={speech} />
+        <div className={styles.cardBacks}>{Array.from({ length: count }, (_, index) => {
+          const card = revealedCards[index];
+          return card
+            ? <div className={styles.meldRevealedCard} key={`${card.suit}-${card.rank}`}><CardView card={card} displayOnly compact /></div>
+            : <div className={styles.cardBack} key={index} />;
+        })}</div>
+      </div>
+      <TrickPile count={tricks} owner="opponent" inspectedTrick={inspectedTrick} />
+    </section>
+  );
+}
+
+const AVATAR_PALETTES = [
+  { background: '#315f55', skin: '#f0c5a0', hair: '#4b2d22' },
+  { background: '#584b78', skin: '#d99b73', hair: '#241b1a' },
+  { background: '#8a593c', skin: '#f3d0b1', hair: '#9b653d' },
+  { background: '#315a78', skin: '#b97854', hair: '#1f1715' },
+  { background: '#6b4a5f', skin: '#e7b58e', hair: '#5c3427' },
+] as const;
+
+function PlayerIdentity({ name, owner, speech = null }: { name: string; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null }) {
+  return (
+    <div className={styles.playerIdentity} data-owner={owner}>
+      {speech && <AvatarSpeechBubble speech={speech} />}
+      <PlayerAvatar name={name} />
+      <strong>{name}</strong>
+    </div>
+  );
+}
+
+function PlayerAvatar({ name }: { name: string }) {
+  const hash = nameHash(name);
+  const palette = AVATAR_PALETTES[hash % AVATAR_PALETTES.length];
+  const hairStyle = (hash >>> 4) % 3;
+  return (
+    <svg className={styles.playerAvatar} viewBox="0 0 100 100" role="img" aria-label={`Avatar von ${name}`}>
+      <circle cx="50" cy="50" r="48" fill={palette.background} />
+      <circle cx="22" cy="55" r="7" fill={palette.skin} />
+      <circle cx="78" cy="55" r="7" fill={palette.skin} />
+      <ellipse cx="50" cy="54" rx="29" ry="34" fill={palette.skin} />
+      {hairStyle === 0 && <path d="M22 48C21 23 34 13 51 13c18 0 29 12 28 34-9-4-13-12-16-19-9 10-23 16-41 20Z" fill={palette.hair} />}
+      {hairStyle === 1 && <path d="M22 43c2-22 15-31 29-31 17 0 27 11 28 32-7-6-11-13-13-19-11 8-26 13-44 18Z" fill={palette.hair} />}
+      {hairStyle === 2 && <path d="M21 46c0-21 12-34 30-34 17 0 28 12 28 34l-9-14-7 5-8-10-9 9-8-8-8 13-9 5Z" fill={palette.hair} />}
+      <circle cx="39" cy="54" r="2.8" fill="#231b18" />
+      <circle cx="61" cy="54" r="2.8" fill="#231b18" />
+      <path d="M47 64c2 2 4 2 6 0" fill="none" stroke="#9c604f" strokeWidth="2" strokeLinecap="round" />
+      <path d="M40 73c6 5 14 5 20 0" fill="none" stroke="#713f39" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function nameHash(name: string): number {
+  let hash = 2166136261;
+  for (const character of name.trim().toLocaleLowerCase('de-AT')) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+type AvatarSpeech = ChatMessage & {
+  playerId: PlayerID;
+  speech: NonNullable<ChatMessage['speech']>;
+};
+
+function latestAvatarSpeech(messages: ChatMessage[], now: number): AvatarSpeech | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.playerId && message.speech && now - message.createdAt < 7_000) {
+      return message as AvatarSpeech;
+    }
+  }
+  return null;
+}
+
+function AvatarSpeechBubble({ speech }: { speech: AvatarSpeech }) {
+  const labels: Record<AvatarSpeech['speech'], string> = {
+    chat: 'Chat',
+    meld: 'Meldung',
+    trump: 'Trumpf',
+  };
+  return (
+    <div
+      className={styles.avatarSpeechBubble}
+      data-kind={speech.speech}
+      key={speech.id}
+      role="status"
+      aria-live="polite"
+    >
+      <strong>{speech.speechText ?? speech.text}</strong>
+      {speech.speech !== 'chat' && <span>{labels[speech.speech]}</span>}
+    </div>
+  );
+}
+
+function CurrentTrick({ trick, playerId, collecting = false }: { trick: Trick; playerId: PlayerID; collecting?: boolean }) {
+  const respondingPlayer: PlayerID = trick.leadPlayer === '0' ? '1' : '0';
+  const cards = ([trick.leadPlayer, respondingPlayer] as PlayerID[])
+    .flatMap((id) => trick.cards[id] ? [{ id, card: trick.cards[id]! }] : []);
+  const collectTo = trick.winner === playerId ? 'self' : 'opponent';
+  const trickRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const trickElement = trickRef.current;
+    const table = trickElement?.closest('[data-game-table]');
+    if (!collecting || !trickElement || !table) return;
+
+    const pile = table.querySelector<HTMLElement>(`.${styles.trickPile}[data-owner="${collectTo}"]`);
+    if (!pile) return;
+
+    const trickBounds = trickElement.getBoundingClientRect();
+    const pileBounds = pile.getBoundingClientRect();
+    trickElement.style.setProperty('--collect-trick-x', `${pileBounds.left + pileBounds.width / 2 - trickBounds.left - trickBounds.width / 2}px`);
+    trickElement.style.setProperty('--collect-trick-y', `${pileBounds.top + pileBounds.height / 2 - trickBounds.top - trickBounds.height / 2}px`);
+  }, [collectTo, collecting]);
+
+  return <div ref={trickRef} className={styles.trick} data-collecting={collecting} data-collect-to={collectTo} aria-label="Aktueller Stich">{cards.length === 0 ? <span>Noch keine Karte im Stich</span> : cards.map(({ id, card }) => <div key={id}><CardView card={card} displayOnly /></div>)}</div>;
+}
+
+function TrickPile({ count, owner, onInspect, inspectedTrick = null }: { count: number; owner: 'self' | 'opponent'; onInspect?: () => void; inspectedTrick?: Trick | null }) {
+  const cardCount = count * 2;
+  return (
+    <button
+      type="button"
+      disabled={!onInspect}
+      onClick={onInspect}
+      title={onInspect ? 'Letzten Stich für beide Spieler ansehen' : undefined}
+      className={styles.trickPile}
+      data-owner={owner}
+      data-empty={count === 0}
+      aria-hidden={count === 0}
+      aria-label={onInspect ? 'Letzten Stich für beide Spieler ansehen' : `${count} gewonnene Stiche mit ${cardCount} Karten`}
+    >
+      {Array.from({ length: inspectedTrick ? Math.max(0, cardCount - 2) : cardCount }, (_, index) => {
+        const centeredIndex = index - (cardCount - 1) / 2;
+        const cardStyle: CSSProperties = {
+          zIndex: index + 1,
+          transform: `translate(${centeredIndex * 3.8}px, ${-index * 1.1}px) rotate(${centeredIndex * 0.72}deg)`,
+        };
+        return <i key={index} style={cardStyle} aria-hidden="true" />;
+      })}
+      {inspectedTrick && <span className={styles.inspectedTrick} style={{ zIndex: cardCount + 1 }} aria-label="Letzter Stich">
+        {[inspectedTrick.leadPlayer, otherPlayer(inspectedTrick.leadPlayer)].map((id) => {
+          const card = inspectedTrick.cards[id];
+          return card ? <CardView key={id} card={card} displayOnly /> : null;
+        })}
+      </span>}
+      <b style={{ zIndex: cardCount + 1 }}>{count}</b>
+    </button>
+  );
+}
+
+function TrickSettlement({ G, tricks, playerId }: { G: PlayerJassState; tricks: Trick[]; playerId: PlayerID }) {
+  const settlementRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    const settlement = settlementRef.current;
+    const table = settlement?.closest('[data-game-table]');
+    if (!settlement || !table) return;
+
+    const trickElements = Array.from(settlement.querySelectorAll<HTMLElement>('[data-settlement-trick]'));
+    const settlingPiles = new Set<HTMLElement>();
+    const originIndexes: Record<'self' | 'opponent', number> = { self: 0, opponent: 0 };
+
+    for (const trickElement of trickElements) {
+      const origin = trickElement.dataset.origin === 'self' ? 'self' : 'opponent';
+      const pile = table.querySelector<HTMLElement>(`.${styles.trickPile}[data-owner="${origin}"]`);
+      if (!pile) continue;
+
+      const pileBounds = pile.getBoundingClientRect();
+      const targetBounds = trickElement.getBoundingClientRect();
+      const originIndex = originIndexes[origin];
+      originIndexes[origin] += 1;
+
+      trickElement.style.setProperty('--settlement-flight-x', `${pileBounds.left + pileBounds.width / 2 - targetBounds.left - targetBounds.width / 2}px`);
+      trickElement.style.setProperty('--settlement-flight-y', `${pileBounds.top + pileBounds.height / 2 - targetBounds.top - targetBounds.height / 2}px`);
+      trickElement.style.setProperty('--settlement-flight-delay', `${originIndex * 85}ms`);
+      trickElement.style.setProperty('--settlement-flight-rotation', `${origin === 'opponent' ? -5 - originIndex : 5 + originIndex}deg`);
+      trickElement.dataset.ready = 'true';
+      pile.dataset.settling = 'true';
+      settlingPiles.add(pile);
+    }
+
+    settlement.dataset.ready = 'true';
+    return () => {
+      for (const pile of settlingPiles) delete pile.dataset.settling;
+    };
+  }, [playerId, tricks.length]);
+
+  if (tricks.length === 0) return null;
+  return (
+    <section className={styles.trickSettlement} aria-label="Gewonnene Stiche dieser Hand" ref={settlementRef}>
+      <h3>Stiche dieser Hand</h3>
+      <div>
+        {(['0', '1'] as PlayerID[]).map((player) => {
+          const wonTricks = tricks
+            .map((trick, index) => ({ trick, index }))
+            .filter(({ trick }) => trick.winner === player);
+          return (
+            <section className={styles.wonTricks} key={player} aria-label={`Stiche von ${gamePlayerName(G, player)}`}>
+              <header><strong>{gamePlayerName(G, player)}</strong><span>{wonTricks.length} {wonTricks.length === 1 ? 'Stich' : 'Stiche'}</span></header>
+              {wonTricks.length === 0 ? (
+                <p>Keine Stiche</p>
+              ) : (
+                <div className={styles.wonTrickGrid}>
+                  {wonTricks.map(({ trick, index }) => (
+                    <article
+                      key={index}
+                      aria-label={`Stich ${index + 1}`}
+                      data-settlement-trick
+                      data-origin={player === playerId ? 'self' : 'opponent'}
+                    >
+                      {([trick.leadPlayer, otherPlayer(trick.leadPlayer)] as PlayerID[]).map((id) => trick.cards[id] && (
+                        <CardView key={id} card={trick.cards[id]!} compact displayOnly />
+                      ))}
+                      <span>{index + 1}</span>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function gamePlayerName(G: Pick<PlayerJassState, 'playerNames'>, playerId: PlayerID): string {
+  return G.playerNames[playerId] ?? (playerId === '0' ? 'Host' : 'Mitspieler');
+}
+
+function CardView({ card, onClick, disabled = false, displayOnly = false, compact = false, highlighted = false, freshlyDealt = false, extraReveal = false, preserveColor = false, deadline }: { card: Card; onClick?: () => void; disabled?: boolean; displayOnly?: boolean; compact?: boolean; highlighted?: boolean; freshlyDealt?: boolean; extraReveal?: boolean; preserveColor?: boolean; deadline?: DeadlineInfo }) {
+  const className = `${styles.card} ${isRedSuit(card.suit) ? styles.redCard : ''} ${compact ? styles.compactCard : ''} ${highlighted ? styles.playableCard : ''} ${deadline ? styles.timeoutCard : ''} ${freshlyDealt ? styles.freshCard : ''} ${extraReveal ? styles.turningExtraCard : ''} ${preserveColor ? styles.preserveCardColor : ''}`;
+  const content = <><span>{card.rank}<i>{SUIT_SYMBOLS[card.suit]}</i></span><b>{SUIT_SYMBOLS[card.suit]}</b><span>{card.rank}<i>{SUIT_SYMBOLS[card.suit]}</i></span></>;
+  if (displayOnly) return <div className={className} aria-label={`${SUIT_NAMES[card.suit]} ${card.rank}`}>{content}</div>;
+  return <button type="button" className={className} style={deadline ? timeoutStyle(deadline) : undefined} onClick={onClick} disabled={disabled} aria-label={`${SUIT_NAMES[card.suit]} ${card.rank} spielen${deadline ? ' – wird bei Zeitablauf automatisch gespielt' : ''}`}>{content}</button>;
+}
+
+function CenteredState({ title, detail, action = false }: { title: string; detail: string; action?: boolean }) {
+  return <main className={styles.centered}><section className="panel"><p className="eyebrow">Klammer Jass</p><h1>{title}</h1><p>{detail}</p>{action && <Link className="button button-primary" href="/">Zur Startseite</Link>}</section></main>;
+}
+
+function canPlayerDouble(G: PlayerJassState, phase: string | null, currentPlayer: string, playerId: PlayerID): boolean {
+  return Boolean(
+    (phase === 'trumpSelection' || phase === 'playing') &&
+      G.settings.cubeEnabled &&
+      !G.cubeOffer &&
+      !G.gameResult &&
+      (currentPlayer === playerId || G.afterMoveDoubleBy === playerId) &&
+      (G.cube.holder === null || G.cube.holder === playerId),
+  );
+}
+
+function cardPlayBlocked(G: PlayerJassState, playerId: PlayerID): boolean {
+  if (G.cubeOffer || G.matchPaused) return true;
+  if (!G.meldContest) return false;
+  return G.meldContest.stage !== 'dealerPlay' || playerId !== G.dealer;
+}
+
+function sortHand(hand: Card[], trump: Suit | null): Card[] {
+  const suitOrder: Suit[] = ['Spades', 'Hearts', 'Clubs', 'Diamonds'];
+  return [...hand].sort((a, b) => a.suit === b.suit
+    ? (a.suit === trump ? TRUMP_ORDER : NON_TRUMP_ORDER).indexOf(a.rank) - (a.suit === trump ? TRUMP_ORDER : NON_TRUMP_ORDER).indexOf(b.rank)
+    : suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit));
+}
+
+function timeoutStyle(deadline: DeadlineInfo): CSSProperties & { '--timeout-progress': string } {
+  const totalMilliseconds = Math.max(1, deadline.totalSeconds * 1000);
+  const progress = deadline.remainingMilliseconds === null
+    ? 1
+    : Math.min(1, Math.max(0, deadline.remainingMilliseconds / totalMilliseconds));
+  return { '--timeout-progress': `${progress * 100}%` };
+}
+
+function originalDescription(G: PlayerJassState): string {
+  if (!G.revealedCard) return 'Die offene Karte bestimmt die mögliche Originalfarbe.';
+  return `${SUIT_NAMES[G.revealedCard.suit]} ${G.revealedCard.rank} liegt offen – Original ist ${SUIT_NAMES[G.revealedCard.suit]}.`;
+}
+
+function trumpWaitingDefault(G: PlayerJassState): string {
+  if (G.smallGameAnnounced && !G.smallGameAccepted) return 'Bei 0 bestätigt der Gegner das Kleine automatisch mit OK.';
+  if (G.smallGameAccepted) {
+    const suit = SUITS.find((candidate) => candidate !== G.revealedCard?.suit);
+    return `Bei 0 wählt der Gegner automatisch ${suit ? SUIT_NAMES[suit] : 'eine gültige Farbe'}.`;
+  }
+  if (G.trumpSelectionPassedCount === 3) return 'Bei 0 lässt der Gegner automatisch neu geben.';
+  return 'Bei 0 antwortet der Gegner automatisch mit Nein.';
+}
+
+function expectedDealerDecision(G: PlayerJassState): MeldDecision | null {
+  if (!G.trump || !G.meldContest?.namedRank) return null;
+  const dealerMeld = getBestSequenceMeld(firstTrickHand(G, G.dealer), G.trump, G.dealer);
+  if (!dealerMeld?.highestCard) return 'concede';
+  const dealerRank = RANKS.indexOf(dealerMeld.highestCard.rank);
+  const frontRank = RANKS.indexOf(G.meldContest.namedRank);
+  if (dealerRank !== frontRank) return dealerRank > frontRank ? 'show' : 'concede';
+  return dealerMeld.highestCard.suit === G.trump ? 'show' : 'concede';
+}
+
+function firstTrickHand(G: PlayerJassState, player: PlayerID): Card[] {
+  const playedCard = G.pastTricks[0]?.cards[player] ?? G.currentTrick.cards[player];
+  return playedCard ? [...G.hands[player], playedCard] : [...G.hands[player]];
+}
+
+function sameCard(a: Card, b: Card): boolean {
+  return a.suit === b.suit && a.rank === b.rank;
+}
+
+function trickCount(tricks: Trick[], playerId: PlayerID): number { return tricks.filter((trick) => trick.winner === playerId).length; }
+function shortId(matchId: string): string { return `${matchId.slice(0, 8)}…${matchId.slice(-4)}`; }
+function isRedSuit(suit: Suit): boolean { return suit === 'Hearts' || suit === 'Diamonds'; }
+function isDefined<T>(value: T | undefined): value is T { return value !== undefined; }
