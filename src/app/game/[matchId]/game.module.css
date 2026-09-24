@@ -133,7 +133,7 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 .trickPile > i { position: absolute; inset: 0; border: 2px solid #d9c99e; border-radius: 7px; background: repeating-linear-gradient(45deg, #8c292d 0 4px, #ede0bd 5px 7px, #17382f 8px 12px); box-shadow: 0 5px 14px rgba(0,0,0,.3); }
 .trickPile > b { position: absolute; z-index: 2; right: -11px; bottom: -9px; display: grid; place-items: center; min-width: 27px; height: 27px; padding: 0 5px; border: 2px solid var(--felt-dark); border-radius: 999px; color: #1f190b; background: var(--gold); font-size: .74rem; }
 .trickPile[data-empty='true'] { visibility: hidden; }
-.trickPile[data-settling='true'] { opacity: 0; }
+.trickPile[data-settling='true'] { opacity: 0; overflow: clip; }
 .inspectedTrick { position: absolute; right: 0; bottom: 0; display: flex; animation: meldFlip .25s ease-out; }
 .inspectedTrick > div { flex: 0 0 68px; width: 68px; height: 100px; }
 .inspectedTrick > div + div { margin-left: -18px; }
@@ -199,14 +199,14 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 .breakdown strong { font-size: 2rem; color: var(--gold); }
 .specialBreakdown { margin: 16px 0 20px; text-align: left; }
 .specialBreakdown h3 { margin-bottom: 9px; color: var(--gold); font-size: .78rem; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
-.specialBreakdown > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.scoreDetailList { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0,0,0,.14); }
-.scoreDetailList > strong { display: block; margin-bottom: 7px; color: var(--ink); }
+.specialBreakdown > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.scoreDetailList { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0,0,0,.14); }
+.scoreDetailList > strong { display: block; margin-bottom: 7px; color: var(--ink); overflow-wrap: anywhere; }
 .scoreDetailList dl { display: grid; gap: 4px; margin: 0; }
 .scoreDetailList dl > div { display: flex; justify-content: space-between; gap: 12px; color: var(--ink); font-size: .76rem; }
 .scoreDetailList dl > div[data-empty='true'] { color: var(--muted); opacity: .6; }
 .scoreDetailList dt, .scoreDetailList dd { margin: 0; }
-.scoreDetailList dd { color: var(--gold); font-weight: 800; }
+.scoreDetailList dd { flex-shrink: 0; color: var(--gold); font-weight: 800; }
 .trickSettlement { margin: 16px 0 20px; text-align: left; }
 .trickSettlement > h3 { margin-bottom: 9px; color: var(--gold); font-size: .78rem; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
 .trickSettlement > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -315,7 +315,8 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 }
 
 @media (max-width: 520px) {
-  .specialBreakdown > div { grid-template-columns: 1fr; }
+  .specialBreakdown > div { gap: 6px; }
+  .scoreDetailList dl > div { gap: 4px; font-size: .7rem; }
   .handEnd, .gameEnd, .pausedMatch { padding: 8px; }
   .matchScoreHero { gap: 8px; }
   .matchScoreHero span, .matchScoreHero small { font-size: .56rem; }

@@ -319,7 +319,7 @@ function GameTable({ matchId }: { matchId: string }) {
                 : <GameEnd G={G} playerId={playerId} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
             ) : (
               <>
-                <TableStatus G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
+                {!settlementVisible && <TableStatus G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
                 {canRobNow && <TrumpSevenExchange isSending={isSending} dispatchMove={dispatchMove} />}
                 {ctx.phase === 'playing' && <MeldExchange G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
                 {ctx.phase === 'endOfHand' && !presentedTrick && (
