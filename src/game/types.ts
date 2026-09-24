@@ -153,6 +153,7 @@ export interface JassState {
   extraDealStartedAt: number | null;
   extraDealUntil: number | null;
   deadlineAt: number | null;
+  decisionTimer?: { id: number; waitingFor: PlayerID[]; started: boolean } | null;
   nextGamePlayers: PlayerID[];
   matchPaused: boolean;
   resumePlayers: PlayerID[];

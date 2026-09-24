@@ -3,13 +3,13 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/db';
 import { toPrismaJson } from '@/db/json';
 import { createClientState, isServerGameState } from '@/game/playerView';
+import { armDecisionTimer } from '@/game/decisionTimer';
 import {
   isDeadlineExpired,
   isExtraDealBeingDisplayed,
   isTrickBeingDisplayed,
   offerCubeAfterMove,
   reduceGameMove,
-  stampDeadline,
   timeoutAction,
 } from '@/game/serverEngine';
 import type { ServerGameState } from '@/game/types';
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         if (automaticAction) {
           const automatic = reduceGameMove(currentState, automaticAction);
           if (!automatic.state) throw new MoveRequestError(409, 'Der automatische Zug konnte nicht ausgeführt werden.');
-          const nextState = stampDeadline(automatic.state);
+          const nextState = armDecisionTimer(automatic.state);
           await persistState(transaction, matchId, gameRecord.updatedAt, nextState);
           return { playerId, state: createClientState(nextState, playerId), timedOut: true, trickBlocked: false, extraDealBlocked: false };
         }
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         ? { state: afterMoveCube, errorType: null }
         : reduceGameMove(currentState, { move, args, playerID: playerId });
       if (!reduced.state) throw new MoveRequestError(422, translateMoveError(reduced.errorType));
-      const nextState = move === 'inspectLastTrick' || move === 'prepareCard' ? reduced.state : stampDeadline(reduced.state);
+      const nextState = move === 'inspectLastTrick' || move === 'prepareCard' ? reduced.state : armDecisionTimer(reduced.state);
       await persistState(transaction, matchId, gameRecord.updatedAt, nextState);
       return { playerId, state: createClientState(nextState, playerId), timedOut: false, trickBlocked: false, extraDealBlocked: false };
     });
@@ -96,17 +96,17 @@ export async function POST(request: NextRequest) {
 
     if (result.timedOut) {
       return NextResponse.json(
-        { error: 'Die Zugzeit war bereits abgelaufen.', ...result },
+        { error: 'Die Zugzeit war bereits abgelaufen.', ...result, serverTime: Date.now() },
         { status: 409 },
       );
     }
     if (result.trickBlocked) {
       return NextResponse.json(
-        { error: result.extraDealBlocked ? 'Die drei Zusatzkarten werden noch aufgedeckt.' : 'Der Stich wird noch drei Sekunden lang angezeigt.', ...result },
+        { error: result.extraDealBlocked ? 'Die drei Zusatzkarten werden noch aufgedeckt.' : 'Der Stich wird noch drei Sekunden lang angezeigt.', ...result, serverTime: Date.now() },
         { status: 409 },
       );
     }
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, ...result, serverTime: Date.now() });
   } catch (error: unknown) {
     if (error instanceof MoveRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

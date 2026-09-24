@@ -47,6 +47,8 @@ Bereits vor Regelversion 2 erstellte Matches werden bewusst nicht übernommen. E
 
 ## Qualitätsprüfungen
 
+Oben rechts zeigt jede Seite den beim Build festgeschriebenen Zeitstempel in Wiener Ortszeit (inklusive Sekunden und Zeitzone). Neuladen oder ein Serverneustart ändern ihn nicht. Im Entwicklungsserver steht stattdessen „Lokale Entwicklung“.
+
 ```bash
 npm test
 npm run typecheck
@@ -71,6 +73,7 @@ Verbindliche Projektreferenz ist `Klammer Jass.pdf` im Projektverzeichnis. Die A
 - Bella wird beim Ausspielen der ersten passenden Trumpf-König-/Dame-Karte standardmäßig ausgewählt, kann aber bewusst abgewählt werden.
 - Nach vier abgelehnten Trumpfentscheidungen wechselt der Dealer. Nach einer gespielten Hand erhält der Spieler mit den höheren Rohaugen den Button; bei Gleichstand bleibt er liegen.
 - Zug- und Würfelfristen werden auf dem Server geprüft. Trumpf-Timeouts wählen „Nein“ beziehungsweise „OK“, Karten-Timeouts eine zufällige gültige Karte und Würfel-Timeouts „Ablehnen“.
+- Online beginnt die volle Entscheidungsfrist nach der Anzeigebestätigung des zuständigen Browsers (nach Karten-/Stichanimationen). Bestätigungen sind pro Entscheidung einmalig. Ohne Bestätigung greift nach 15 Sekunden zusätzlicher Wartezeit die ursprüngliche Frist. Beide geöffneten Spielseiten prüfen abgelaufene Fristen erneut und können den Standardzug auslösen; ohne geöffneten Client erfolgt die Prüfung beim nächsten Zugriff über `tick` oder `move`. Die Anzeige verwendet die Serverzeit unabhängig von der Geräteuhr.
 
 ## Datenfluss und Sicherheit
 
@@ -79,7 +82,7 @@ Verbindliche Projektreferenz ist `Klammer Jass.pdf` im Projektverzeichnis. Die A
 3. `POST /api/matches/:id/join` vergibt den zweiten Sitz genau einmal oder öffnet nach erfolgreicher Anmeldung den eigenen vorhandenen Sitz erneut.
 4. `GET /api/matches/:id` liefert nur die für den angemeldeten Spieler bestimmte Sicht.
 5. `POST /api/move` akzeptiert ausschließlich bekannte Moves mit validierten Argumenten und der erwarteten State-ID.
-6. `POST /api/matches/:id/tick` führt abgelaufene serverseitige Defaultzüge aus und pausiert unbeantwortete Spielenden.
+6. `POST /api/matches/:id/tick` bestätigt mit optionaler `decisionID` sichtbare Optionen, führt abgelaufene serverseitige Defaultzüge aus und pausiert unbeantwortete Spielenden.
 7. Die Datenbankaktualisierung vergleicht zusätzlich `updatedAt`, sodass parallele Züge nicht unbemerkt überschrieben werden.
 
 Interne Reducer-Logs, Undo-Zustände, Talon und gegnerische Handkarten werden niemals an den Browser übertragen.

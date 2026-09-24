@@ -46,6 +46,10 @@ const PHASE_NAMES: Record<string, string> = {
 
 export default function GamePage() {
   const { matchId } = useParams<{ matchId: string }>();
+  return <GameTable key={matchId} matchId={matchId} />;
+}
+
+function GameTable({ matchId }: { matchId: string }) {
   const router = useRouter();
   const {
     state,

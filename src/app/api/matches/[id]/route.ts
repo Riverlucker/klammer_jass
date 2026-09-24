@@ -40,6 +40,7 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
+      serverTime: Date.now(),
       playerId,
       state: createClientState(gameRecord.state, playerId),
     });

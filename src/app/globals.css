@@ -37,6 +37,19 @@ button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
 h1, h2, h3, p { margin-top: 0; }
 
+.build-timestamp {
+  position: fixed;
+  top: 2px;
+  right: 8px;
+  z-index: 100;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .eyebrow { margin: 0; color: var(--gold); font-size: .74rem; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
 .panel { padding: clamp(20px, 4vw, 34px); border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(145deg, rgba(17, 48, 39, .94), var(--panel)); box-shadow: var(--shadow); backdrop-filter: blur(16px); }
 .panel-heading { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 26px; }

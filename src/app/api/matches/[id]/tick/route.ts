@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { prisma } from '@/db';
 import { toPrismaJson } from '@/db/json';
 import { createClientState, isServerGameState } from '@/game/playerView';
+import { acknowledgeDecision, armDecisionTimer } from '@/game/decisionTimer';
 import {
   isDeadlineExpired,
   reduceGameMove,
-  stampDeadline,
   timeoutAction,
 } from '@/game/serverEngine';
 import type { ServerGameState } from '@/game/types';
@@ -24,6 +24,12 @@ export async function POST(
     if (!idSchema.safeParse(id).success) {
       return NextResponse.json({ error: 'Ungültige Match-ID.' }, { status: 400 });
     }
+    const body = await request.text();
+    let payload: unknown = {};
+    try { payload = body ? JSON.parse(body) : {}; }
+    catch { return NextResponse.json({ error: 'Ungültige Zeitprüfung.' }, { status: 400 }); }
+    const parsed = z.object({ decisionID: z.number().int().nonnegative().optional() }).safeParse(payload);
+    if (!parsed.success) return NextResponse.json({ error: 'Ungültige Zeitprüfung.' }, { status: 400 });
 
     const result = await prisma.$transaction(async (transaction) => {
       const gameRecord = await transaction.game.findUnique({
@@ -37,26 +43,30 @@ export async function POST(
         return { status: 409 as const, error: 'Nicht unterstützter Spielstand.' };
       }
 
-      let state: ServerGameState = gameRecord.state;
+      let state: ServerGameState = parsed.data.decisionID === undefined
+        ? gameRecord.state
+        : acknowledgeDecision(gameRecord.state, playerId, parsed.data.decisionID);
       let changed = false;
       if (isDeadlineExpired(state)) {
         const action = timeoutAction(state);
         if (action) {
           const reduced = reduceGameMove(state, action);
           if (reduced.state) {
-            state = stampDeadline(reduced.state);
-            const updated = await transaction.game.updateMany({
-              where: { id, updatedAt: gameRecord.updatedAt },
-              data: { state: toPrismaJson(state) },
-            });
-            changed = updated.count === 1;
-            if (!changed) return { status: 409 as const, error: 'Der Spielstand hat sich bereits geändert.' };
-            await transaction.match.update({
-              where: { id },
-              data: { status: matchStatus(state) },
-            });
+            state = armDecisionTimer(reduced.state);
           }
         }
+      }
+      if (state !== gameRecord.state) {
+        const updated = await transaction.game.updateMany({
+          where: { id, updatedAt: gameRecord.updatedAt },
+          data: { state: toPrismaJson(state) },
+        });
+        changed = updated.count === 1;
+        if (!changed) return { status: 409 as const, error: 'Der Spielstand hat sich bereits geändert.' };
+        await transaction.match.update({
+          where: { id },
+          data: { status: matchStatus(state) },
+        });
       }
       return { status: 200 as const, playerId, state: createClientState(state, playerId), changed };
     });
@@ -71,14 +81,14 @@ export async function POST(
         console.error('Timeout-Benachrichtigung fehlgeschlagen:', error);
       }
     }
-    return NextResponse.json({ success: true, playerId: result.playerId, state: result.state });
+    return NextResponse.json({ success: true, playerId: result.playerId, state: result.state, serverTime: Date.now() });
   } catch (error: unknown) {
     console.error('Zeitprüfung fehlgeschlagen:', error);
     return NextResponse.json({ error: 'Zeitprüfung fehlgeschlagen.' }, { status: 500 });
   }
 }
 
-function matchStatus(state: ReturnType<typeof stampDeadline>): string {
+function matchStatus(state: ServerGameState): string {
   if (state.ctx.gameover !== undefined) return 'finished';
   if (state.G.matchPaused) return 'paused';
   return 'active';
