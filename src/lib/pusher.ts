@@ -18,6 +18,7 @@ export const pusherServer = Object.values(serverConfig).every(Boolean)
       secret: serverConfig.secret!,
       cluster: serverConfig.cluster!,
       useTLS: true,
+      timeout: 3000,
     })
   : null;
 

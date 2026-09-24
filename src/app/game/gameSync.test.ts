@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GameClock, TickRequest } from './gameSync';
+import { canRetryAfterTimerStart, GameClock, TickRequest } from './gameSync';
+import type { GameClientState } from '@/game/types';
 
 describe('Online-Synchronisierung', () => {
+  it('wiederholt einen Klick nur nach konkurrierender Timer-Bestätigung, nie nach einem Zug', () => {
+    const state = (id: number, started: boolean) => ({
+      G: { decisionTimer: { id, started, waitingFor: ['0'] } },
+    }) as GameClientState;
+    expect(canRetryAfterTimerStart(state(10, false), state(10, true))).toBe(true);
+    expect(canRetryAfterTimerStart(state(10, false), state(11, true))).toBe(false);
+    expect(canRetryAfterTimerStart(state(10, true), state(10, true))).toBe(false);
+    expect(canRetryAfterTimerStart(state(10, false), state(10, false))).toBe(false);
+  });
   it('verwendet Serverzeit und monotone Laufzeit trotz falscher Browseruhr', () => {
     const clock = new GameClock();
     const wallClock = vi.spyOn(Date, 'now').mockReturnValue(999_999_999);

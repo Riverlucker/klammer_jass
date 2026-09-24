@@ -1,3 +1,12 @@
+import type { GameClientState } from '@/game/types';
+
+// Only a clock-start acknowledgement is safe to retry automatically; an actual move must never be replayed.
+export function canRetryAfterTimerStart(before: GameClientState, after: GameClientState): boolean {
+  const previous = before.G.decisionTimer;
+  const current = after.G.decisionTimer;
+  return Boolean(previous && current && previous.id === current.id && !previous.started && current.started);
+}
+
 // Keep elapsed time independent of the user's wall clock (including clock changes).
 export class GameClock {
   private sample: { serverTime: number; receivedAt: number } | null = null;

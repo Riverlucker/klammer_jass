@@ -8,11 +8,11 @@ import { otherPlayer, type PlayerID, type ServerGameState } from '@/game/types';
 import { POST } from './route';
 
 const mocks = vi.hoisted(() => ({
-  findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn(), player: '0' as PlayerID,
+  findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn(), transaction: vi.fn(), player: '0' as PlayerID,
 }));
-vi.mock('@/db', () => ({ prisma: { $transaction: (action: (tx: unknown) => unknown) => action({
-  game: { findUnique: mocks.findUnique, updateMany: mocks.updateMany }, match: { update: mocks.update },
-}) } }));
+vi.mock('@/db', () => ({ prisma: {
+  game: { findUnique: mocks.findUnique }, $transaction: mocks.transaction,
+} }));
 vi.mock('@/lib/auth', () => ({ readMatchToken: () => 'session', resolvePlayerID: () => mocks.player }));
 vi.mock('@/lib/pusher', () => ({ pusherServer: null }));
 
@@ -34,7 +34,10 @@ beforeEach(() => {
   }
   stored = armDecisionTimer(stored);
   mocks.player = stored.ctx.currentPlayer as PlayerID;
-  mocks.findUnique.mockImplementation(async () => ({ state: structuredClone(stored), match: {}, updatedAt: new Date(1_000) }));
+  mocks.findUnique.mockImplementation(async () => ({ state: structuredClone(stored), match: { status: 'active' }, updatedAt: new Date(1_000) }));
+  mocks.transaction.mockImplementation(async (action) => action({
+    game: { updateMany: mocks.updateMany }, match: { update: mocks.update },
+  }));
   mocks.updateMany.mockImplementation(async ({ data }) => { stored = data.state; return { count: 1 }; });
 });
 afterEach(() => { vi.useRealTimers(); });
@@ -47,6 +50,7 @@ describe('Online-Zeitprüfung über die API', () => {
     expect(response.status).toBe(200);
     expect((await response.json()).serverTime).toBe(6_000);
     expect(stored.G.deadlineAt).toBe(16_000);
+    expect(mocks.update).not.toHaveBeenCalled();
     const beforeTimeout = stored._stateID;
     // The waiting opponent can drive the timeout even if the active browser disconnects.
     mocks.player = otherPlayer(player);
@@ -75,5 +79,15 @@ describe('Online-Zeitprüfung über die API', () => {
     expect((await tick({ decisionID: stored.G.decisionTimer!.id })).status).toBe(200);
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expect(stored.G.decisionTimer?.started).toBe(false);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it('liest unveränderte Spielstände ohne Transaktion und liefert Messinformationen', async () => {
+    const response = await tick();
+    expect(response.status).toBe(200);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(response.headers.get('Server-Timing')).toMatch(/^app;dur=/);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect((await response.json()).realtimeEnabled).toBe(false);
   });
 });

@@ -15,7 +15,7 @@ import {
 import type { ServerGameState } from '@/game/types';
 import { parseMoveRequest } from '@/lib/apiSchemas';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
-import { pusherServer } from '@/lib/pusher';
+import { matchResponseHeaders, notifyMatchUpdate } from '@/lib/matchUpdates';
 
 class MoveRequestError extends Error {
   constructor(readonly status: number, message: string) {
@@ -24,6 +24,7 @@ class MoveRequestError extends Error {
 }
 
 export async function POST(request: NextRequest) {
+  const startedAt = performance.now();
   try {
     const parsed = parseMoveRequest(await request.json());
     if (!parsed.success) {
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
           const automatic = reduceGameMove(currentState, automaticAction);
           if (!automatic.state) throw new MoveRequestError(409, 'Der automatische Zug konnte nicht ausgeführt werden.');
           const nextState = armDecisionTimer(automatic.state);
-          await persistState(transaction, matchId, gameRecord.updatedAt, nextState);
+          await persistState(transaction, matchId, gameRecord.updatedAt, nextState, gameRecord.match.status);
           return { playerId, state: createClientState(nextState, playerId), timedOut: true, trickBlocked: false, extraDealBlocked: false };
         }
       }
@@ -80,18 +81,12 @@ export async function POST(request: NextRequest) {
         : reduceGameMove(currentState, { move, args, playerID: playerId });
       if (!reduced.state) throw new MoveRequestError(422, translateMoveError(reduced.errorType));
       const nextState = move === 'inspectLastTrick' || move === 'prepareCard' ? reduced.state : armDecisionTimer(reduced.state);
-      await persistState(transaction, matchId, gameRecord.updatedAt, nextState);
+      await persistState(transaction, matchId, gameRecord.updatedAt, nextState, gameRecord.match.status);
       return { playerId, state: createClientState(nextState, playerId), timedOut: false, trickBlocked: false, extraDealBlocked: false };
     });
 
-    if (pusherServer && !result.trickBlocked) {
-      try {
-        await pusherServer.trigger(`match-${matchId}`, 'state-update', {
-          stateID: result.state._stateID,
-        });
-      } catch (error: unknown) {
-        console.error('Echtzeit-Benachrichtigung fehlgeschlagen:', error);
-      }
+    if (!result.trickBlocked) {
+      notifyMatchUpdate(matchId, result.state._stateID);
     }
 
     if (result.timedOut) {
@@ -106,7 +101,7 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
-    return NextResponse.json({ success: true, ...result, serverTime: Date.now() });
+    return NextResponse.json({ success: true, ...result, serverTime: Date.now() }, { headers: matchResponseHeaders(startedAt) });
   } catch (error: unknown) {
     if (error instanceof MoveRequestError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -121,16 +116,17 @@ async function persistState(
   matchId: string,
   updatedAt: Date,
   state: ServerGameState,
+  previousStatus: string,
 ) {
   const updated = await transaction.game.updateMany({
     where: { id: matchId, updatedAt },
     data: { state: toPrismaJson(state) },
   });
   if (updated.count !== 1) throw new MoveRequestError(409, 'Ein anderer Zug war schneller.');
-  await transaction.match.update({
-    where: { id: matchId },
-    data: { status: matchStatus(state) },
-  });
+  const status = matchStatus(state);
+  if (status !== previousStatus) {
+    await transaction.match.update({ where: { id: matchId }, data: { status } });
+  }
 }
 
 function matchStatus(state: ServerGameState): string {

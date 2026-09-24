@@ -86,3 +86,12 @@ Verbindliche Projektreferenz ist `Klammer Jass.pdf` im Projektverzeichnis. Die A
 7. Die Datenbankaktualisierung vergleicht zusätzlich `updatedAt`, sodass parallele Züge nicht unbemerkt überschrieben werden.
 
 Interne Reducer-Logs, Undo-Zustände, Talon und gegnerische Handkarten werden niemals an den Browser übertragen.
+
+## Online-Latenz
+
+- `vercel.json` legt Frankfurt (`fra1`) als Funktionsregion fest, passend zur konfigurierten Neon-Datenbank in `eu-central-1`. Bei einem Datenbankumzug muss die Region angepasst werden.
+- Pusher-Benachrichtigungen starten direkt nach dem Speichern. Next.js `after()` hält sie nach der HTTP-Antwort am Leben, ohne die Zugantwort zu blockieren. Auf dem öffentlichen Kanal werden weiterhin ausschließlich Versionsnummern übertragen.
+- Ohne bestätigte Echtzeit-Verbindung oder ohne serverseitige Pusher-Konfiguration wird jede Sekunde nachgefragt, sonst alle fünf Sekunden zur Absicherung. Erfolgreiches Wiederverbinden lädt sofort den aktuellen Spielstand. Unveränderte Zeitprüfungen öffnen keine Datenbanktransaktion.
+- Klicks warten nicht auf laufende Hintergrundabfragen. Ein Versionskonflikt durch die gleichzeitige Timer-Bestätigung darf genau einmal erneut versucht werden; nach einem tatsächlichen Zug wird die Aktion nicht wiederholt.
+- `Server-Timing` zeigt bei erfolgreichen Spielstands-, Zug- und Tick-Antworten die Bearbeitungsdauer; `X-Jass-Region` zeigt die tatsächliche Serverregion. Im Browser-Netzwerkpanel lassen sich damit Serverzeit und Netzwerkwartezeit unterscheiden.
+- Die drei Sekunden Anzeige eines abgeschlossenen Stichs sind eine separate Spielanimation, keine Übertragungsverzögerung.

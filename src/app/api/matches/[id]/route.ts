@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/db';
 import { createClientState, isServerGameState } from '@/game/playerView';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
+import { matchResponseHeaders } from '@/lib/matchUpdates';
+import { pusherServer } from '@/lib/pusher';
 
 const idSchema = z.string().uuid();
 
@@ -10,6 +12,7 @@ export async function GET(
   request: NextRequest,
   context: RouteContext<'/api/matches/[id]'>,
 ) {
+  const startedAt = performance.now();
   try {
     const { id } = await context.params;
     if (!idSchema.safeParse(id).success) {
@@ -41,9 +44,10 @@ export async function GET(
     return NextResponse.json({
       success: true,
       serverTime: Date.now(),
+      realtimeEnabled: Boolean(pusherServer),
       playerId,
       state: createClientState(gameRecord.state, playerId),
-    });
+    }, { headers: matchResponseHeaders(startedAt) });
   } catch (error: unknown) {
     console.error('Match konnte nicht geladen werden:', error);
     return NextResponse.json({ error: 'Match konnte nicht geladen werden.' }, { status: 500 });

@@ -7,7 +7,7 @@ import { createClientState, isServerGameState } from '@/game/playerView';
 import type { ServerGameState } from '@/game/types';
 import { parseChatRequest } from '@/lib/apiSchemas';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
-import { pusherServer } from '@/lib/pusher';
+import { notifyMatchUpdate } from '@/lib/matchUpdates';
 
 class ChatRequestError extends Error {
   constructor(readonly status: number, message: string) {
@@ -41,15 +41,7 @@ export async function POST(request: NextRequest) {
       return { playerId, state: createClientState(nextState, playerId) };
     });
 
-    if (pusherServer) {
-      try {
-        await pusherServer.trigger(`match-${matchId}`, 'state-update', {
-          stateID: result.state._stateID,
-        });
-      } catch (error: unknown) {
-        console.error('Chat-Benachrichtigung fehlgeschlagen:', error);
-      }
-    }
+    notifyMatchUpdate(matchId, result.state._stateID);
 
     return NextResponse.json({ success: true, ...result, serverTime: Date.now() });
   } catch (error: unknown) {

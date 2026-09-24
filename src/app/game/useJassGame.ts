@@ -6,7 +6,7 @@ import type {
   PlayerID,
 } from '@/game/types';
 import { getPusherClient } from '@/lib/pusher';
-import { GameClock, TickRequest } from './gameSync';
+import { canRetryAfterTimerStart, GameClock, TickRequest } from './gameSync';
 
 export type MoveName =
   | 'prepareCard'
@@ -38,6 +38,7 @@ interface StateResponse {
   playerId: PlayerID;
   error?: string;
   serverTime?: number;
+  realtimeEnabled?: boolean;
 }
 
 export const MELD_RESPONSE_LABELS: Record<MeldResponse, string> = {
@@ -59,6 +60,8 @@ export function useJassGame(matchId: string) {
   const [isChatSending, setIsChatSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [serverRealtime, setServerRealtime] = useState(false);
   const clock = useRef(new GameClock());
   const ticks = useRef(new TickRequest());
   const latestState = useRef<GameClientState | null>(null);
@@ -66,6 +69,7 @@ export function useJassGame(matchId: string) {
 
   const applyResponse = useCallback((data: StateResponse) => {
     if (!clock.current.accept(data.state._stateID, data.serverTime)) return;
+    if (data.realtimeEnabled !== undefined) setServerRealtime(data.realtimeEnabled);
     latestState.current = data.state;
     setState(data.state);
     setPlayerId(data.playerId);
@@ -118,17 +122,39 @@ export function useJassGame(matchId: string) {
     const pusher = getPusherClient();
     if (!pusher) return;
     const channel = pusher.subscribe(`match-${matchId}`);
-    channel.bind('state-update', fetchState);
+    const subscribed = () => { setRealtimeConnected(true); void fetchState(); };
+    const disconnected = () => { setRealtimeConnected(false); };
+    const stateUpdated = (event: { stateID?: number }) => {
+      if (event?.stateID !== undefined && event.stateID <= (latestState.current?._stateID ?? -1)) return;
+      void fetchState();
+    };
+    channel.bind('pusher:subscription_succeeded', subscribed);
+    channel.bind('pusher:subscription_error', disconnected);
+    channel.bind('state-update', stateUpdated);
+    pusher.connection.bind('disconnected', disconnected);
+    pusher.connection.bind('unavailable', disconnected);
+    pusher.connection.bind('failed', disconnected);
     return () => {
-      channel.unbind('state-update', fetchState);
+      channel.unbind('state-update', stateUpdated);
+      channel.unbind('pusher:subscription_succeeded', subscribed);
+      channel.unbind('pusher:subscription_error', disconnected);
+      pusher.connection.unbind('disconnected', disconnected);
+      pusher.connection.unbind('unavailable', disconnected);
+      pusher.connection.unbind('failed', disconnected);
       pusher.unsubscribe(`match-${matchId}`);
     };
   }, [fetchState, matchId]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => void tickState(), 5000);
-    return () => window.clearInterval(timer);
-  }, [tickState]);
+    const interval = realtimeConnected && serverRealtime ? 5000 : 1000;
+    let stopped = false;
+    let timer = window.setTimeout(poll, interval);
+    async function poll() {
+      await tickState();
+      if (!stopped) timer = window.setTimeout(poll, interval);
+    }
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [realtimeConnected, serverRealtime, tickState]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(clock.current.now()), 250);
@@ -163,25 +189,33 @@ export function useJassGame(matchId: string) {
     sending.current = true;
     setIsSending(true);
     try {
-      await ticks.current.pending;
-      const current = latestState.current!;
-      // A timeout may have advanced the game while the click was waiting for synchronization.
+      let current = latestState.current!;
+      // Ignore a click on options that a concurrent timeout has already replaced.
       if (current.G.decisionTimer?.id !== state.G.decisionTimer?.id) return false;
-      const response = await fetch('/api/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId, move, args, stateID: current._stateID }),
-      });
-      const data = await readJson(response);
-      if (!response.ok) {
-        if (hasState(data)) applyResponse(data);
-        else if (response.status === 409) await fetchState();
-        throw new Error(data.error ?? 'Zug konnte nicht gesendet werden.');
+      // Do not queue clicks behind background polls. Retry only a concurrent timer-start acknowledgement.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch('/api/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchId, move, args, stateID: current._stateID }),
+        });
+        const data = await readJson(response);
+        if (!response.ok) {
+          if (hasState(data)) applyResponse(data);
+          else if (response.status === 409) await fetchState();
+          const refreshed = latestState.current!;
+          if (response.status === 409 && attempt === 0 && canRetryAfterTimerStart(current, refreshed)) {
+            current = refreshed;
+            continue;
+          }
+          throw new Error(data.error ?? 'Zug konnte nicht gesendet werden.');
+        }
+        if (!hasState(data)) throw new Error('Der Server hat keinen Spielstand zurückgegeben.');
+        applyResponse(data);
+        setError(null);
+        return true;
       }
-      if (!hasState(data)) throw new Error('Der Server hat keinen Spielstand zurückgegeben.');
-      applyResponse(data);
-      setError(null);
-      return true;
+      return false;
     } catch (cause: unknown) {
       setError(errorMessage(cause));
       return false;

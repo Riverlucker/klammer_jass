@@ -12,6 +12,7 @@ import {
 import type { ServerGameState } from '@/game/types';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
 import { pusherServer } from '@/lib/pusher';
+import { matchResponseHeaders, notifyMatchUpdate } from '@/lib/matchUpdates';
 
 const idSchema = z.string().uuid();
 
@@ -19,6 +20,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
+  const startedAt = performance.now();
   try {
     const { id } = await context.params;
     if (!idSchema.safeParse(id).success) {
@@ -31,57 +33,47 @@ export async function POST(
     const parsed = z.object({ decisionID: z.number().int().nonnegative().optional() }).safeParse(payload);
     if (!parsed.success) return NextResponse.json({ error: 'Ungültige Zeitprüfung.' }, { status: 400 });
 
-    const result = await prisma.$transaction(async (transaction) => {
-      const gameRecord = await transaction.game.findUnique({
-        where: { id },
-        include: { match: true },
-      });
-      if (!gameRecord?.match) return { status: 404 as const, error: 'Match nicht gefunden.' };
-      const playerId = resolvePlayerID(gameRecord.match, readMatchToken(request, id));
-      if (!playerId) return { status: 403 as const, error: 'Ungültige Spielsitzung.' };
-      if (!isServerGameState(gameRecord.state)) {
-        return { status: 409 as const, error: 'Nicht unterstützter Spielstand.' };
-      }
+    // Most polls only read. Open a transaction only when a deadline actually changes the game.
+    const gameRecord = await prisma.game.findUnique({ where: { id }, include: { match: true } });
+    if (!gameRecord?.match) return NextResponse.json({ error: 'Match nicht gefunden.' }, { status: 404 });
+    const playerId = resolvePlayerID(gameRecord.match, readMatchToken(request, id));
+    if (!playerId) return NextResponse.json({ error: 'Ungültige Spielsitzung.' }, { status: 403 });
+    if (!isServerGameState(gameRecord.state)) {
+      return NextResponse.json({ error: 'Nicht unterstützter Spielstand.' }, { status: 409 });
+    }
 
-      let state: ServerGameState = parsed.data.decisionID === undefined
-        ? gameRecord.state
-        : acknowledgeDecision(gameRecord.state, playerId, parsed.data.decisionID);
-      let changed = false;
-      if (isDeadlineExpired(state)) {
-        const action = timeoutAction(state);
-        if (action) {
-          const reduced = reduceGameMove(state, action);
-          if (reduced.state) {
-            state = armDecisionTimer(reduced.state);
-          }
-        }
+    let state: ServerGameState = parsed.data.decisionID === undefined
+      ? gameRecord.state
+      : acknowledgeDecision(gameRecord.state, playerId, parsed.data.decisionID);
+    if (isDeadlineExpired(state)) {
+      const action = timeoutAction(state);
+      if (action) {
+        const reduced = reduceGameMove(state, action);
+        if (reduced.state) state = armDecisionTimer(reduced.state);
       }
-      if (state !== gameRecord.state) {
+    }
+    if (state !== gameRecord.state) {
+      const changed = await prisma.$transaction(async (transaction) => {
         const updated = await transaction.game.updateMany({
           where: { id, updatedAt: gameRecord.updatedAt },
           data: { state: toPrismaJson(state) },
         });
-        changed = updated.count === 1;
-        if (!changed) return { status: 409 as const, error: 'Der Spielstand hat sich bereits geändert.' };
-        await transaction.match.update({
-          where: { id },
-          data: { status: matchStatus(state) },
-        });
+        if (updated.count !== 1) return false;
+        const status = matchStatus(state);
+        if (status !== gameRecord.match!.status) {
+          await transaction.match.update({ where: { id }, data: { status } });
+        }
+        return true;
+      });
+      if (!changed) {
+        return NextResponse.json({ error: 'Der Spielstand hat sich bereits geändert.' }, { status: 409 });
       }
-      return { status: 200 as const, playerId, state: createClientState(state, playerId), changed };
-    });
-
-    if ('error' in result) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      notifyMatchUpdate(id, state._stateID);
     }
-    if (result.changed && pusherServer) {
-      try {
-        await pusherServer.trigger(`match-${id}`, 'state-update', { stateID: result.state._stateID });
-      } catch (error: unknown) {
-        console.error('Timeout-Benachrichtigung fehlgeschlagen:', error);
-      }
-    }
-    return NextResponse.json({ success: true, playerId: result.playerId, state: result.state, serverTime: Date.now() });
+    return NextResponse.json({
+      success: true, playerId, state: createClientState(state, playerId), serverTime: Date.now(),
+      realtimeEnabled: Boolean(pusherServer),
+    }, { headers: matchResponseHeaders(startedAt) });
   } catch (error: unknown) {
     console.error('Zeitprüfung fehlgeschlagen:', error);
     return NextResponse.json({ error: 'Zeitprüfung fehlgeschlagen.' }, { status: 500 });
