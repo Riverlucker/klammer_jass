@@ -98,7 +98,6 @@ function directSpeech(next: ServerGameState, action: CommentedAction, text: stri
     case 'acceptSmallGame': return 'Du darfst wählen!';
     case 'overruleSmallGame': return 'Ich spiele Kreuz!';
     case 'exchangeTrumpSeven': return 'Ich tausche die passende 7!';
-    case 'keepTrumpSeven': return 'Ich behalte die passende 7!';
     case 'respondMeld': return meldResponse(action.args);
     case 'nameMeld': return next.G.meldContest?.namedRank ? `Bis ${RANK_NAMES[next.G.meldContest.namedRank]}!` : text;
     case 'resolveMeldContest': return action.args[0] === 'show' ? 'Meine ist höher!' : 'Deine ist gut!';
@@ -115,7 +114,6 @@ function speechCategory(move: string, text: string): ChatMessage['speech'] {
     case 'overruleSmallGame':
     case 'chooseTrump':
     case 'exchangeTrumpSeven':
-    case 'keepTrumpSeven':
       return 'trump';
     case 'decline':
       return text.endsWith('sagt Nein.') ? 'trump' : undefined;
@@ -193,7 +191,7 @@ function describeAction(
     case 'exchangeTrumpSeven':
       return [`${player} tauscht die passende 7 gegen die offene Originalkarte.`];
     case 'keepTrumpSeven':
-      return [`${player} behält die passende 7 auf der Hand.`];
+      return [];
     case 'doubleCube':
       return [`${player} dreht den Würfel auf ${previous.G.cube.value * 2}.`];
     case 'acceptCube':

@@ -8,6 +8,7 @@ import { expectedMeldDecision, expectedMeldResponse } from './playMoves';
 import type { JassState, MeldType, PlayerID, ServerGameState } from './types';
 import { isPlayerID, otherPlayer } from './types';
 import { findBella, getBestSequenceMeld, isCard, isMoveLegal } from './validation';
+import { TRICK_DISPLAY_MILLISECONDS } from './trickDisplay';
 
 export interface EngineAction {
   move: string;
@@ -15,7 +16,7 @@ export interface EngineAction {
   playerID: PlayerID;
 }
 
-export const TRICK_DISPLAY_MILLISECONDS = 3_000;
+export { TRICK_DISPLAY_MILLISECONDS } from './trickDisplay';
 export { EXTRA_DEAL_DISPLAY_MILLISECONDS } from './extraDeal';
 
 const reducer = CreateGameReducer({ game: JassGame });
@@ -43,7 +44,7 @@ export function reduceGameMove(
   if (action.move === 'inspectLastTrick') {
     const now = Date.now();
     const last = state.G.pastTricks.at(-1);
-    if (action.args.length !== 0 || !last || last.winner !== action.playerID
+    if (action.args.length !== 0 || !last || !isPlayerID(action.playerID)
       || state.ctx.phase !== 'playing' || state.ctx.gameover !== undefined
       || state.G.matchPaused || state.G.cubeOffer || isDeadlineExpired(state, now)
       || isTrickBeingDisplayed(state, now) || isExtraDealBeingDisplayed(state, now)) {

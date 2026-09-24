@@ -7,6 +7,7 @@ import type {
 } from '@/game/types';
 import { getPusherClient } from '@/lib/pusher';
 import { canRetryAfterTimerStart, GameClock, TickRequest } from './gameSync';
+import { TrickDisplay, type TrickPresentation } from '@/game/trickDisplay';
 
 export type MoveName =
   | 'prepareCard'
@@ -62,6 +63,9 @@ export function useJassGame(matchId: string) {
   const [now, setNow] = useState(() => Date.now());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [serverRealtime, setServerRealtime] = useState(false);
+  const [trickPresentation, setTrickPresentation] = useState<TrickPresentation | null>(null);
+  const [animationNow, setAnimationNow] = useState(0);
+  const trickDisplay = useRef(new TrickDisplay());
   const clock = useRef(new GameClock());
   const ticks = useRef(new TickRequest());
   const latestState = useRef<GameClientState | null>(null);
@@ -71,6 +75,9 @@ export function useJassGame(matchId: string) {
     if (!clock.current.accept(data.state._stateID, data.serverTime)) return;
     if (data.realtimeEnabled !== undefined) setServerRealtime(data.realtimeEnabled);
     latestState.current = data.state;
+    const receivedAt = performance.now();
+    setTrickPresentation(trickDisplay.current.receive(data.state.G, receivedAt));
+    setAnimationNow(receivedAt);
     setState(data.state);
     setPlayerId(data.playerId);
     setNow(clock.current.now());
@@ -157,12 +164,15 @@ export function useJassGame(matchId: string) {
   }, [realtimeConnected, serverRealtime, tickState]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(clock.current.now()), 250);
+    const timer = window.setInterval(() => {
+      setNow(clock.current.now());
+      setAnimationNow(performance.now());
+    }, 250);
     return () => window.clearInterval(timer);
   }, []);
 
   const deadlineAt = state?.G.deadlineAt ?? null;
-  const trickDisplayUntil = state?.G.trickDisplayUntil ?? null;
+  const trickDisplayMilliseconds = trickPresentation ? Math.max(0, trickPresentation.until - animationNow) : 0;
   const extraDealStartedAt = state?.G.extraDealStartedAt ?? null;
   const extraDealUntil = state?.G.extraDealUntil ?? null;
   useEffect(() => {
@@ -173,7 +183,7 @@ export function useJassGame(matchId: string) {
   const decisionTimer = state?.G.decisionTimer;
   const readyDecisionID = !loading && !isSending && playerId && decisionTimer && !decisionTimer.started
     && decisionTimer.waitingFor.includes(playerId)
-    && (trickDisplayUntil ?? 0) <= now && (extraDealUntil ?? 0) <= now
+    && trickDisplayMilliseconds <= 0 && (extraDealUntil ?? 0) <= now
     ? decisionTimer.id : null;
   useEffect(() => {
     if (readyDecisionID === null || document.visibilityState !== 'visible') return;
@@ -252,9 +262,6 @@ export function useJassGame(matchId: string) {
     }
   }, [applyResponse, fetchState, isChatSending, matchId, playerId, state]);
 
-  const trickDisplayMilliseconds = trickDisplayUntil === null
-    ? 0
-    : Math.max(0, trickDisplayUntil - now);
   const extraDealMilliseconds = extraDealUntil === null
     ? 0
     : Math.max(0, extraDealUntil - now);
@@ -263,7 +270,7 @@ export function useJassGame(matchId: string) {
     : null;
   const decisionClockStart = Math.max(
     now,
-    trickDisplayMilliseconds > 0 ? trickDisplayUntil! : now,
+    now + trickDisplayMilliseconds,
     extraDealMilliseconds > 0 ? extraDealUntil! : now,
   );
   const decisionMilliseconds = deadlineAt === null ? null
@@ -281,6 +288,8 @@ export function useJassGame(matchId: string) {
     remainingMilliseconds: decisionMilliseconds,
     remainingSeconds: decisionMilliseconds === null ? null : Math.ceil(decisionMilliseconds / 1000),
     trickDisplayMilliseconds,
+    displayedTrick: trickDisplayMilliseconds > 0 ? trickPresentation?.trick ?? null : null,
+    inspectingLastTrick: Boolean(trickPresentation?.inspecting),
     extraDealMilliseconds,
     extraDealElapsedMilliseconds,
     now,

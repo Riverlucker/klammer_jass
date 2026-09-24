@@ -61,6 +61,8 @@ function GameTable({ matchId }: { matchId: string }) {
     remainingMilliseconds,
     remainingSeconds,
     trickDisplayMilliseconds,
+    displayedTrick,
+    inspectingLastTrick,
     extraDealMilliseconds,
     extraDealElapsedMilliseconds,
     now,
@@ -108,8 +110,8 @@ function GameTable({ matchId }: { matchId: string }) {
   const hand = sortHand([...baseHand, ...insertedExtraCards], G.trump);
   const myTurn = ctx.currentPlayer === playerId;
   const gameOver = Boolean(G.matchResult || ctx.gameover !== undefined);
-  const inspectedTrick = trickDisplayMilliseconds > 0 && G.inspectingLastTrick ? G.pastTricks.at(-1) ?? null : null;
-  const presentedTrick = trickDisplayMilliseconds > 0 && !G.inspectingLastTrick ? G.pastTricks.at(-1) ?? null : null;
+  const inspectedTrick = inspectingLastTrick ? displayedTrick : null;
+  const presentedTrick = !inspectingLastTrick ? displayedTrick : null;
   const tableTrick = presentedTrick ?? G.currentTrick;
   const hasTableTrick = Object.keys(tableTrick.cards).length > 0;
   const presentedWinner = presentedTrick?.winner ?? null;
@@ -119,6 +121,10 @@ function GameTable({ matchId }: { matchId: string }) {
   const cardsBlocked = trickDisplayMilliseconds > 0 || extraDealActive || cardPlayBlocked(G, playerId);
   const myVisibleTricks = Math.max(0, trickCount(G.pastTricks, playerId) - (presentedWinner === playerId ? 1 : 0));
   const opponentVisibleTricks = Math.max(0, trickCount(G.pastTricks, opponentId) - (presentedWinner === opponentId ? 1 : 0));
+  const canInspectLastTrick = ctx.phase === 'playing' && trickDisplayMilliseconds <= 0 && !extraDealActive
+    && !G.cubeOffer && !G.matchPaused && !isSending;
+  const visiblePhase = ctx.phase === 'trumpExchange' && !canExchangeTrumpSeven(G, playerId)
+    ? 'playing' : ctx.phase;
   const deadline = {
     remainingMilliseconds,
     totalSeconds: G.cubeOffer ? G.settings.cubeTimeSeconds : G.settings.moveTimeSeconds,
@@ -189,7 +195,7 @@ function GameTable({ matchId }: { matchId: string }) {
     <main className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerContext}>
-          <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[ctx.phase ?? ''] ?? 'Match beendet'}</p>
+          <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[visiblePhase ?? ''] ?? 'Match beendet'}</p>
           <div className={styles.matchId}>
             <span title={matchId}>{shortId(matchId)}</span>
             <button type="button" onClick={copyInvite}>{copied ? 'Kopiert' : 'ID kopieren'}</button>
@@ -238,6 +244,7 @@ function GameTable({ matchId }: { matchId: string }) {
             revealedCards={revealedMeldCards(G, opponentId, now)}
             tricks={opponentVisibleTricks}
             inspectedTrick={inspectedTrick?.winner === opponentId ? inspectedTrick : null}
+            onInspect={canInspectLastTrick && G.pastTricks.at(-1)?.winner === opponentId ? () => void dispatchMove('inspectLastTrick') : undefined}
             speech={avatarSpeech?.playerId === opponentId ? avatarSpeech : null}
           />
 
@@ -337,7 +344,7 @@ function GameTable({ matchId }: { matchId: string }) {
                 )}
               </div>
             </div>
-            <TrickPile count={myVisibleTricks} owner="self" inspectedTrick={inspectedTrick?.winner === playerId ? inspectedTrick : null} onInspect={ctx.phase === 'playing' && G.pastTricks.at(-1)?.winner === playerId && trickDisplayMilliseconds <= 0 && !extraDealActive && !G.cubeOffer && !G.matchPaused && !isSending ? () => void dispatchMove('inspectLastTrick') : undefined} />
+            <TrickPile count={myVisibleTricks} owner="self" inspectedTrick={inspectedTrick?.winner === playerId ? inspectedTrick : null} onInspect={canInspectLastTrick && G.pastTricks.at(-1)?.winner === playerId ? () => void dispatchMove('inspectLastTrick') : undefined} />
           </section>
           </section>
           <ChatBox
@@ -428,7 +435,7 @@ function TableStatus({ G, playerId, myTurn, isSending, dispatchMove, deadline }:
         data-urgent={myTurn && turnSeconds !== null && turnSeconds <= 5}
         style={myTurn ? timeoutStyle(deadline) : undefined}
       >
-        <span>{myTurn ? 'Dein Zug' : 'Gegner ist am Zug'}</span>
+        <span>{myTurn ? 'Dein Zug' : `${gamePlayerName(G, otherPlayer(playerId))} am Zug`}</span>
         {myTurn && turnSeconds !== null && <small aria-live="polite">{turnSeconds}s</small>}
         {myTurn && turnSeconds !== null && <i aria-hidden="true" />}
       </div>
@@ -545,10 +552,7 @@ function TrumpSevenExchange({ G, playerId, isSending, dispatchMove, deadline }: 
   const undecidedPlayer = (['0', '1'] as PlayerID[]).find((id) => !(G.trumpSevenDecisions ?? []).includes(id));
   if (undecidedPlayer !== playerId || !canExchangeTrumpSeven(G, playerId)) {
     return (
-      <StatusCard
-        title="Räubern"
-        detail={`${undecidedPlayer ? gamePlayerName(G, undecidedPlayer) : 'Der andere Spieler'} entscheidet, ob die offene Karte getauscht wird.`}
-      />
+      <TableStatus G={G} playerId={playerId} myTurn={false} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
     );
   }
 
@@ -982,7 +986,7 @@ function TimeoutNotice({ deadline, children }: { deadline: DeadlineInfo; childre
   );
 }
 
-function OpponentArea({ name, count, tricks, speech, revealedCards, inspectedTrick }: { name: string; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null }) {
+function OpponentArea({ name, count, tricks, speech, revealedCards, inspectedTrick, onInspect }: { name: string; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void }) {
   return (
     <section className={styles.opponent}>
       <div className={styles.opponentCardsRow}>
@@ -994,7 +998,7 @@ function OpponentArea({ name, count, tricks, speech, revealedCards, inspectedTri
             : <div className={styles.cardBack} key={index} />;
         })}</div>
       </div>
-      <TrickPile count={tricks} owner="opponent" inspectedTrick={inspectedTrick} />
+      <TrickPile count={tricks} owner="opponent" inspectedTrick={inspectedTrick} onInspect={onInspect} />
     </section>
   );
 }

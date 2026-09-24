@@ -11,6 +11,35 @@ function initialState(): ServerGameState {
 }
 
 describe('Tisch-Chat', () => {
+  it('verrät beim Verzicht aufs Räubern weder im Chat noch in der Sprechblase die 7', () => {
+    const previous = initialState();
+    const next = structuredClone(previous);
+    appendDealerComments(previous, next, { move: 'keepTrumpSeven', args: [], playerID: '1' });
+    for (const viewer of ['0', '1'] as const) {
+      expect(createClientState(next, viewer).G.chatMessages).toEqual([]);
+    }
+  });
+
+  it('kommentiert einen tatsächlich ausgeführten Tausch weiterhin öffentlich', () => {
+    const previous = initialState();
+    const next = structuredClone(previous);
+    appendDealerComments(previous, next, { move: 'exchangeTrumpSeven', args: [], playerID: '1' });
+    expect(createClientState(next, '0').G.chatMessages[0]).toMatchObject({
+      text: 'Gast tauscht die passende 7 gegen die offene Originalkarte.',
+      speechText: 'Ich tausche die passende 7!',
+    });
+  });
+
+  it('blendet alte automatische 7-Hinweise aus gespeicherten Matches aus', () => {
+    const state = structuredClone(initialState());
+    state.G.chatMessages = [
+      { id: 1, kind: 'dealer', playerId: '1', text: 'Gast behält die passende 7 auf der Hand.', speechText: 'Ich behalte die passende 7!', createdAt: 1000 },
+      { id: 2, kind: 'player', playerId: '1', text: 'Ich behalte die passende 7!', createdAt: 2000 },
+    ];
+    expect(createClientState(state, '0').G.chatMessages.map((message) => message.id)).toEqual([2]);
+    expect(state.G.chatMessages).toHaveLength(2);
+  });
+
   it('nennt eine automatisch gültige Terz und zeigt nur ihre ungespielten Karten drei Sekunden lang', () => {
     const previous = initialState();
     const next = structuredClone(previous);
