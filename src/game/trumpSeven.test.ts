@@ -14,7 +14,7 @@ function apply(state: ServerGameState, move: string, playerID: PlayerID, args: u
   return result.state;
 }
 
-function setup(holder: 'front' | 'dealer' = 'dealer', contract: 'original' | 'small' | 'better' = 'original') {
+function setup(holder: 'front' | 'dealer' = 'dealer', contract: 'original' | 'small' | 'better' = 'original', drawSeven = false) {
   let state = InitializeGame({ game: JassGame, numPlayers: 2 }) as ServerGameState;
   state = apply(state, 'setReady', '0');
   state = structuredClone(apply(state, 'setReady', '1'));
@@ -26,6 +26,12 @@ function setup(holder: 'front' | 'dealer' = 'dealer', contract: 'original' | 'sm
   if (holder === 'front') [state.G.hands[front][4], state.G.hands[dealer][0]] = [state.G.hands[dealer][0], state.G.hands[front][4]];
   const used = [...state.G.hands[front], ...state.G.hands[dealer], state.G.revealedCard];
   state.G.deck = createDeck().filter((card) => !used.some((other) => card.suit === other.suit && card.rank === other.rank));
+  if (drawSeven) {
+    const hand = state.G.hands[holder === 'front' ? front : dealer];
+    const index = hand.findIndex((card) => card.suit === 'Hearts' && card.rank === '7');
+    const deckIndex = (holder === 'front' ? front : dealer) === '0' ? 0 : 3;
+    [hand[index], state.G.deck[deckIndex]] = [state.G.deck[deckIndex], hand[index]];
+  }
   if (contract === 'original') {
     state = apply(state, 'acceptOriginal', front);
   } else {
@@ -44,6 +50,15 @@ function setup(holder: 'front' | 'dealer' = 'dealer', contract: 'original' | 'sm
 }
 
 describe('Räubern erst beim eigenen ersten Zug', () => {
+  it.each(['front', 'dealer'] as const)('bietet %s beim Kleinen auch eine erst nachgegebene passende 7 an', (holder) => {
+    let { state } = setup(holder, 'small', true);
+    const player = holder === 'front' ? state.G.vorne : state.G.dealer;
+    expect(state.G.hands[player].slice(-3)).toContainEqual({ suit: 'Hearts', rank: '7' });
+    if (holder === 'dealer') state = apply(state, 'playCard', state.G.vorne, [{ suit: 'Clubs', rank: '8' }]);
+    expect(canExchangeTrumpSeven(createClientState(state, player).G, player)).toBe(true);
+    expect(apply(state, 'exchangeTrumpSeven', player).G.hands[player]).toContainEqual({ suit: 'Hearts', rank: 'A' });
+  });
+
   it.each([
     ['front', 'small'], ['dealer', 'small'], ['front', 'better'], ['dealer', 'better'],
   ] as const)('räubert als %s beim %s die offene Herz-Karte trotz Kreuz-Trumpf', (holder, contract) => {

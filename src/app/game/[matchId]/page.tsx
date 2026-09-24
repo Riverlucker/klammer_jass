@@ -136,7 +136,7 @@ function GameTable({ matchId }: { matchId: string }) {
   const collectingTrick = trickDisplayMilliseconds > 0 && trickDisplayMilliseconds <= 700;
   const settlementVisible = !presentedTrick && (ctx.phase === 'endOfHand' || ctx.phase === 'endOfGame');
   const canDouble = trickDisplayMilliseconds <= 0 && !extraDealActive && canPlayerDouble(G, ctx.phase ?? null, ctx.currentPlayer, playerId);
-  const cardsBlocked = trickDisplayMilliseconds > 0 || extraDealActive || cardPlayBlocked(G, playerId);
+  const cardsBlocked = canRobNow || trickDisplayMilliseconds > 0 || extraDealActive || cardPlayBlocked(G, playerId);
   const myVisibleTricks = Math.max(0, trickCount(G.pastTricks, playerId) - (presentedWinner === playerId ? 1 : 0));
   const opponentVisibleTricks = Math.max(0, trickCount(G.pastTricks, opponentId) - (presentedWinner === opponentId ? 1 : 0));
   const canInspectLastTrick = ctx.phase === 'playing' && trickDisplayMilliseconds <= 0 && !extraDealActive
@@ -320,7 +320,6 @@ function GameTable({ matchId }: { matchId: string }) {
             ) : (
               <>
                 {!settlementVisible && <TableStatus G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
-                {canRobNow && <TrumpSevenExchange isSending={isSending} dispatchMove={dispatchMove} />}
                 {ctx.phase === 'playing' && <MeldExchange G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
                 {ctx.phase === 'endOfHand' && !presentedTrick && (
                   <HandEnd G={G} playerId={playerId} isSending={isSending} onReady={() => void dispatchMove('nextHand')} deadline={deadline} />
@@ -382,7 +381,11 @@ function GameTable({ matchId }: { matchId: string }) {
         </div>
       )}
 
-      {pendingCard && G.trump && (
+      {canRobNow && !extraDealActive && trickDisplayMilliseconds <= 0 && G.revealedCard && (
+        <TrumpSevenExchange card={G.revealedCard} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} error={error} />
+      )}
+
+      {pendingCard && G.trump && !canRobNow && (
         <div className={styles.modalBackdrop} role="presentation">
           <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="meld-title">
             <p className="eyebrow">Meldung</p>
@@ -567,19 +570,38 @@ function MeldExchange({ G, playerId, myTurn, isSending, dispatchMove, deadline }
   );
 }
 
-function TrumpSevenExchange({ isSending, dispatchMove }: {
+function TrumpSevenExchange({ card, isSending, dispatchMove, deadline, error }: {
+  card: Card;
   isSending: boolean;
   dispatchMove: DispatchMove;
+  deadline: DeadlineInfo;
+  error: string | null;
 }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+
   return (
-    <StatusCard title="Offene Karte nehmen?" detail="Vor deiner ersten Karte kannst du mit der passenden 7 räubern. Du kannst auch direkt weiterspielen; bei Zeitablauf gilt die normale Standardaktion.">
-      <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('exchangeTrumpSeven')}>
-        Mit der passenden 7 räubern
-      </button>
-      <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('keepTrumpSeven')}>
-        Karten liegen lassen
-      </button>
-    </StatusCard>
+    <dialog ref={dialogRef} className={`${styles.modal} ${styles.exchangeDialog}`} aria-labelledby="exchange-title" aria-describedby="exchange-description" onCancel={(event) => event.preventDefault()}>
+      <p className="eyebrow">Vor deiner ersten Karte</p>
+      <h2 id="exchange-title">Möchtest du räubern?</h2>
+      <p id="exchange-description">Du kannst deine {SUIT_NAMES[card.suit]} 7 gegen die offene {SUIT_NAMES[card.suit]} {card.rank} tauschen – unabhängig vom gewählten Trumpf.</p>
+      <div className={styles.exchangeCards} aria-hidden="true">
+        <CardView card={{ suit: card.suit, rank: '7' }} displayOnly />
+        <span>→</span>
+        <CardView card={card} displayOnly />
+      </div>
+      <div className="button-row">
+        <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('exchangeTrumpSeven')}>Räubern</button>
+        <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('keepTrumpSeven')}>Nicht räubern</button>
+      </div>
+      <TimeoutNotice deadline={deadline}>Bei 0 wird nicht geräubert und die normale Standardaktion ausgeführt.</TimeoutNotice>
+      {error && <p role="alert">{error}</p>}
+    </dialog>
   );
 }
 
