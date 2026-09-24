@@ -67,12 +67,23 @@ export function appendDealerComments(
     appendMessage(next.G, {
       kind: 'dealer',
       playerId: speech ? action.playerID : null,
-      ...(speech ? { speech, speechText: directSpeech(next, action, text) } : {}),
+      ...(speech ? { speech, speechText: directSpeech(previous, next, action, text) } : {}),
       text,
       createdAt: now,
     });
   }
   const sameHand = previous.G.gameNumber === next.G.gameNumber && previous.G.handNumber === next.G.handNumber;
+  const newDeal = next.ctx.phase === 'trumpSelection' && (
+    previous.ctx.phase !== 'trumpSelection' || !sameHand || previous.G.redealCount !== next.G.redealCount
+  );
+  if (newDeal && next.G.revealedCard) {
+    const card = next.G.revealedCard;
+    appendMessage(next.G, {
+      kind: 'dealer', playerId: null,
+      text: `${card.rank} ${SUIT_NAMES[card.suit]} liegt offen.`,
+      createdAt: now,
+    });
+  }
   const newMelds = next.G.shownMelds.slice(sameHand ? previous.G.shownMelds.length : 0);
   for (const meld of newMelds) {
     if (meld.type === 'Bella') continue;
@@ -89,11 +100,12 @@ export function appendDealerComments(
   }
 }
 
-function directSpeech(next: ServerGameState, action: CommentedAction, text: string): string {
+function directSpeech(previous: ServerGameState, next: ServerGameState, action: CommentedAction, text: string): string {
   switch (action.move) {
     case 'chooseTrump': return isSuit(action.args[0]) ? `${SUIT_NAMES[action.args[0]]}!` : text;
     case 'acceptOriginal': return 'Original!';
-    case 'decline': return 'Nein!';
+    case 'decline': return previous.G.trumpSelectionPassedCount < 2 ? 'Nein!'
+      : previous.G.trumpSelectionPassedCount === 2 ? 'Immer noch nicht!' : 'Neu geben!';
     case 'announceSmallGame': return 'Ein Kleines!';
     case 'acceptSmallGame': return 'Du darfst wählen!';
     case 'overruleSmallGame': return 'Ich spiele Kreuz!';
@@ -116,7 +128,7 @@ function speechCategory(move: string, text: string): ChatMessage['speech'] {
     case 'exchangeTrumpSeven':
       return 'trump';
     case 'decline':
-      return text.endsWith('sagt Nein.') ? 'trump' : undefined;
+      return text.startsWith('Alle haben gepasst') ? undefined : 'trump';
     case 'playCard':
       return text.includes(' meldet ') ? 'meld' : undefined;
     case 'respondMeld':
@@ -176,10 +188,14 @@ function describeAction(
       return previous.G.revealedCard
         ? [`${player} spielt Original. ${SUIT_NAMES[previous.G.revealedCard.suit]} ist Trumpf.`]
         : [`${player} spielt Original.`];
-    case 'decline':
+    case 'decline': {
+      const refusal = previous.G.trumpSelectionPassedCount < 2 ? `${player} sagt Nein.`
+        : previous.G.trumpSelectionPassedCount === 2 ? `${player} sagt „Immer noch nicht“.`
+          : `${player} lässt neu geben.`;
       return next.G.redealCount > previous.G.redealCount
-        ? [`${player} sagt Nein.`, 'Alle haben gepasst – der Dealer gibt neu.']
-        : [`${player} sagt Nein.`];
+        ? [refusal, 'Alle haben gepasst – der Dealer gibt neu.']
+        : [refusal];
+    }
     case 'announceSmallGame':
       return [`${player} sagt ein Kleines an.`];
     case 'acceptSmallGame':

@@ -4,6 +4,7 @@ import { appendDealerComments, appendPlayerChat } from './chat';
 import { JassGame } from './logic';
 import { createClientState } from './playerView';
 import { revealedMeldCards } from './meldReveal';
+import { reduceGameMove } from './serverEngine';
 import type { ServerGameState } from './types';
 
 function initialState(): ServerGameState {
@@ -11,6 +12,41 @@ function initialState(): ServerGameState {
 }
 
 describe('Tisch-Chat', () => {
+  it('nennt die offene Karte nach dem Geben und unterscheidet beide Verhandlungsrunden', () => {
+    let state = initialState();
+    state = reduceGameMove(state, { move: 'setReady', playerID: '0', args: [] }).state!;
+    expect(state.G.chatMessages.some((message) => message.text.endsWith('liegt offen.'))).toBe(false);
+    state = reduceGameMove(state, { move: 'setReady', playerID: '1', args: [] }).state!;
+    const announcement = state.G.chatMessages.at(-1)!;
+    expect(announcement).toMatchObject({ kind: 'dealer', playerId: null });
+    expect(announcement.text).toMatch(/^(7|8|9|10|J|Q|K|A) (Pik|Herz|Karo|Kreuz) liegt offen\.$/);
+    expect(announcement.text.startsWith(`${state.G.revealedCard!.rank} `)).toBe(true);
+    expect(announcement.speech).toBeUndefined();
+
+    for (const expected of ['Nein!', 'Nein!', 'Immer noch nicht!', 'Neu geben!']) {
+      const before = state.G.chatMessages.length;
+      state = reduceGameMove(state, { move: 'decline', playerID: state.G.vorne === state.ctx.currentPlayer ? state.G.vorne : state.G.dealer, args: [] }).state!;
+      expect(state.G.chatMessages[before].speechText).toBe(expected);
+      expect(state.G.chatMessages[before].speech).toBe('trump');
+      if (expected === 'Immer noch nicht!') expect(state.G.chatMessages[before].text).toContain('sagt „Immer noch nicht“.');
+    }
+    expect(state.G.chatMessages.filter((message) => message.text.endsWith('liegt offen.'))).toHaveLength(2);
+    expect(state.G.chatMessages.at(-2)?.text).toBe('Alle haben gepasst – der Dealer gibt neu.');
+    expect(state.G.chatMessages.at(-1)?.text).toContain(`${state.G.revealedCard!.rank} `);
+  });
+
+  it.each(['nextHand', 'nextGame'] as const)('nennt auch bei %s dieselbe erneut aufgedeckte Karte', (move) => {
+    const previous = structuredClone(initialState());
+    previous.ctx.phase = move === 'nextHand' ? 'endOfHand' : 'endOfGame';
+    previous.G.revealedCard = { suit: 'Diamonds', rank: 'K' };
+    const next = structuredClone(previous);
+    next.ctx.phase = 'trumpSelection';
+    if (move === 'nextHand') next.G.handNumber += 1;
+    else next.G.gameNumber += 1;
+    appendDealerComments(previous, next, { move, playerID: '0', args: [] });
+    expect(next.G.chatMessages.at(-1)).toMatchObject({ text: 'K Karo liegt offen.', playerId: null, gameNumber: next.G.gameNumber, handNumber: next.G.handNumber });
+  });
+
   it('verrät beim Verzicht aufs Räubern weder im Chat noch in der Sprechblase die 7', () => {
     const previous = initialState();
     const next = structuredClone(previous);

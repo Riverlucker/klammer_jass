@@ -211,12 +211,12 @@ function GameTable({ matchId }: { matchId: string }) {
     <main className={styles.page}>
       <header className={styles.header}>
         <nav className={styles.mobileControls} aria-label="Tischansicht">
-          <button ref={scoreToggle} type="button" aria-expanded={mobilePanel === 'score'} aria-controls="table-score" onClick={() => setMobilePanel(mobilePanel === 'score' ? null : 'score')}>Punkte</button>
+          <button ref={scoreToggle} type="button" aria-expanded={mobilePanel === 'score'} aria-controls="table-score" onClick={() => setMobilePanel(mobilePanel === 'score' ? null : 'score')}>Spielinfo</button>
           {!gameOver && ctx.phase !== 'waitingRoom' && <button ref={chatToggle} type="button" aria-expanded={mobilePanel === 'chat'} aria-controls="table-chat" onClick={() => setMobilePanel(mobilePanel === 'chat' ? null : 'chat')}>Chat</button>}
           <span>Spiel {G.gameNumber} · Hand {G.handNumber}</span>
         </nav>
         <div id="table-score" className={styles.headerDetails} data-open={mobilePanel === 'score'}>
-          <button type="button" className={styles.panelClose} onClick={closeMobilePanel} aria-label="Punktestand schließen">×</button>
+          <button type="button" className={styles.panelClose} onClick={closeMobilePanel} aria-label="Spielinfo schließen">×</button>
           <div className={styles.headerContext}>
             <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[ctx.phase ?? ''] ?? 'Match beendet'}</p>
             <div className={styles.matchId}>
@@ -264,6 +264,7 @@ function GameTable({ matchId }: { matchId: string }) {
           >
           <OpponentArea
             name={gamePlayerName(G, opponentId)}
+            score={G.scores[opponentId]}
             count={G.handCounts[opponentId]}
             revealedCards={revealedMeldCards(G, opponentId, now)}
             tricks={opponentVisibleTricks}
@@ -328,7 +329,7 @@ function GameTable({ matchId }: { matchId: string }) {
             )}
             </div>
             <div className={styles.playerCardsRow}>
-              <PlayerIdentity name={gamePlayerName(G, playerId)} owner="self" speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
+              <PlayerIdentity name={gamePlayerName(G, playerId)} score={G.scores[playerId]} owner="self" speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
               <div className={styles.hand} style={{ '--hand-gaps': Math.max(1, fullHand.length - 1) } as CSSProperties}>
                 {hand.map((card) => {
                   const leadCard = G.currentTrick.cards[G.currentTrick.leadPlayer];
@@ -649,7 +650,7 @@ function TrumpSelection({ G, playerId, myTurn, isSending, dispatchMove, deadline
       <StatusCard title="Kleines?" detail="Sage ein Kleines an oder gib die freie Wahl zum Button weiter.">
         <button className="button button-primary" type="button" disabled={disabled} onClick={() => void dispatchMove('announceSmallGame')}>Kleines ansagen</button>
         <TimedDecision deadline={deadline} label="Automatisch bei 0">
-          <button className="button" type="button" disabled={disabled} onClick={() => void dispatchMove('decline')}>Nein</button>
+          <button className="button" type="button" disabled={disabled} onClick={() => void dispatchMove('decline')}>Immer noch nicht</button>
         </TimedDecision>
       </StatusCard>
     );
@@ -1024,11 +1025,11 @@ function TimeoutNotice({ deadline, children }: { deadline: DeadlineInfo; childre
   );
 }
 
-function OpponentArea({ name, count, tricks, speech, revealedCards, inspectedTrick, onInspect }: { name: string; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void }) {
+function OpponentArea({ name, score, count, tricks, speech, revealedCards, inspectedTrick, onInspect }: { name: string; score: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void }) {
   return (
     <section className={styles.opponent}>
       <div className={styles.opponentCardsRow}>
-        <PlayerIdentity name={name} owner="opponent" speech={speech} />
+        <PlayerIdentity name={name} score={score} owner="opponent" speech={speech} />
         <div className={styles.cardBacks}>{Array.from({ length: count }, (_, index) => {
           const card = revealedCards[index];
           return card
@@ -1049,11 +1050,12 @@ const AVATAR_PALETTES = [
   { background: '#6b4a5f', skin: '#e7b58e', hair: '#5c3427' },
 ] as const;
 
-function PlayerIdentity({ name, owner, speech = null }: { name: string; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null }) {
+function PlayerIdentity({ name, score, owner, speech = null }: { name: string; score: number; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null }) {
   return (
     <div className={styles.playerIdentity} data-owner={owner}>
       {speech && <AvatarSpeechBubble speech={speech} />}
       <PlayerAvatar name={name} />
+      <span className={styles.avatarScore} aria-label={`${name}: ${score} Punkte`}><b>{score}</b><small>Punkte</small></span>
       <strong>{name}</strong>
     </div>
   );

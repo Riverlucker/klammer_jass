@@ -32,7 +32,11 @@
 .table[data-static-settlement='true'] .trickPile { display: none; }
 .opponent, .playerArea { position: relative; min-width: 0; }
 .opponent { padding-top: 10px; }
-.playerIdentity { position: relative; z-index: 10; display: grid; width: 120px; min-width: 0; justify-items: center; align-self: end; gap: 6px; }
+.playerIdentity { position: relative; z-index: 10; display: grid; grid-template-columns: 118px minmax(0, 1fr); width: 168px; min-width: 0; justify-items: center; align-self: end; gap: 6px; }
+.playerIdentity > strong { grid-column: 1 / -1; }
+.avatarScore { display: grid; align-self: center; justify-items: center; gap: 3px; color: var(--gold); font-variant-numeric: tabular-nums; }
+.avatarScore b { font-size: 1.05rem; line-height: 1; }
+.avatarScore small { color: var(--muted); font-size: .5rem; }
 .playerIdentity strong { width: 100%; color: var(--ink); font-size: .74rem; letter-spacing: .035em; text-align: center; overflow-wrap: anywhere; }
 .playerAvatar { display: block; width: 118px; height: 118px; filter: drop-shadow(0 8px 13px rgba(0,0,0,.28)); }
 .avatarSpeechBubble { position: absolute; z-index: 12; left: calc(100% - 9px); top: 5px; display: grid; width: max-content; min-width: 126px; max-width: min(240px, 55vw); justify-items: start; padding: 10px 13px 8px; border: 2px solid rgba(225,184,91,.72); border-radius: 6px 16px 16px; color: #1d190d; background: #fff5d7; box-shadow: 0 10px 26px rgba(0,0,0,.34), 0 0 0 4px rgba(225,184,91,.12); pointer-events: none; transform-origin: left center; animation: avatarSpeechBubblePop 7s cubic-bezier(.2,.75,.25,1) both; }
@@ -45,7 +49,7 @@
 .playerIdentity[data-owner='self'] .avatarSpeechBubble { left: 0; top: auto; bottom: calc(100% + 12px); border-radius: 16px; transform-origin: 40px bottom; }
 .playerIdentity[data-owner='self'] .avatarSpeechBubble::after { left: 32px; top: auto; bottom: -8px; border-left: 0; border-right: 2px solid rgba(225,184,91,.72); transform: rotate(45deg); }
 .playerIdentity[data-owner='self'] .avatarSpeechBubble[data-kind='chat']::after { border-color: rgba(111,203,154,.72); }
-.opponentCardsRow, .playerCardsRow { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: end; gap: 18px; width: min(760px, calc(100% - 24px)); min-width: 0; margin: 0 auto; }
+.opponentCardsRow, .playerCardsRow { display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: end; gap: 18px; width: min(760px, calc(100% - 24px)); min-width: 0; margin: 0 auto; }
 .cardBacks { display: flex; justify-content: center; padding-right: 50px; }
 .meldRevealedCard { width: 74px; height: 111px; flex-shrink: 0; margin-right: 6px; animation: meldFlip .25s ease-out; }
 .meldRevealedCard > div { width: 100%; height: 100%; }
@@ -370,9 +374,11 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
   .gameLayout { display: block; }
   .table { height: calc(100dvh - 70px - env(safe-area-inset-bottom)); min-height: 0; padding: 5px 0 0; grid-template-rows: 76px minmax(122px, 1fr) minmax(220px, 1.5fr); gap: 5px; }
   .opponent { padding-top: 0; }
-  .opponentCardsRow, .playerCardsRow { width: 100%; padding: 0 38px 0 3px; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; }
-  .playerIdentity { width: 48px; gap: 2px; align-self: center; }
-  .playerAvatar { width: 44px; height: 44px; }
+  .opponentCardsRow, .playerCardsRow { width: 100%; padding: 0 38px 0 3px; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; }
+  .playerIdentity { width: 76px; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 4px; align-self: center; }
+  .playerAvatar { width: 40px; height: 40px; }
+  .avatarScore b { font-size: .72rem; }
+  .avatarScore small { font-size: .48rem; }
   .playerIdentity strong { font-size: .62rem; line-height: 1.15; max-height: 2.3em; overflow: hidden; }
   .cardBacks { padding: 3px 28px 3px 0; align-items: center; }
   .cardBack { flex-shrink: 0; width: 44px; height: 66px; margin-right: -28px; border-radius: 5px; }
