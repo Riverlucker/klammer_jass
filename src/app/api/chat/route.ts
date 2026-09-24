@@ -8,6 +8,7 @@ import type { ServerGameState } from '@/game/types';
 import { parseChatRequest } from '@/lib/apiSchemas';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
 import { notifyMatchUpdate } from '@/lib/matchUpdates';
+import { loadGameRecord } from '@/lib/gameRecord';
 
 class ChatRequestError extends Error {
   constructor(readonly status: number, message: string) {
@@ -24,10 +25,7 @@ export async function POST(request: NextRequest) {
     const { matchId, message } = parsed.data;
 
     const result = await prisma.$transaction(async (transaction) => {
-      const gameRecord = await transaction.game.findUnique({
-        where: { id: matchId },
-        include: { match: true },
-      });
+      const gameRecord = await loadGameRecord(transaction, matchId, readMatchToken(request, matchId));
       if (!gameRecord?.match) throw new ChatRequestError(404, 'Match nicht gefunden.');
 
       const playerId = resolvePlayerID(gameRecord.match, readMatchToken(request, matchId));

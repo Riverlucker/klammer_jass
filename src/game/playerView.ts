@@ -21,6 +21,7 @@ export function createClientState(state: ServerGameState, playerID: PlayerID): G
     talonCount: state.G.deck.length,
     timeoutCard: state.ctx.currentPlayer === playerID ? state.G.timeoutCard ?? null : null,
     timeoutSelection: state.ctx.currentPlayer === playerID ? state.G.timeoutSelection ?? null : null,
+    trumpSevenDecisions: (state.G.trumpSevenDecisions ?? []).filter((id) => id === playerID),
     // Older saved matches may still contain this automatic disclosure of an unplayed seven.
     chatMessages: (state.G.chatMessages ?? []).filter((message) => !(message.kind === 'dealer'
       && (message.speechText === 'Ich behalte die passende 7!'

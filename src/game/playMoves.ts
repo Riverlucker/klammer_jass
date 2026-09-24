@@ -68,6 +68,7 @@ export const playCard: Move<JassState> = (
 
   G.currentTrick.cards[playerID] = card;
   G.hands[playerID] = hand.filter((candidate) => !sameCard(candidate, card));
+  if (firstTrick && !G.trumpSevenDecisions.includes(playerID)) G.trumpSevenDecisions.push(playerID);
 
   if (bella) {
     awardMelds(G, [bella]);
@@ -182,6 +183,8 @@ export const respondMeld: Move<JassState> = (
     G.dealer,
   );
   if (response !== expected) return INVALID_MOVE;
+  // Once a player answers a meld, their hand must no longer change through an exchange.
+  if (!G.trumpSevenDecisions.includes(playerID)) G.trumpSevenDecisions.push(playerID);
   G.meldContest.response = response;
   G.meldContest.replyComment = response === 'good' ? replyComment! : null;
   G.meldContest.stage = 'dealerPlay';

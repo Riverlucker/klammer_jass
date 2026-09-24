@@ -164,8 +164,8 @@ export function timeoutAction(state: ServerGameState): EngineAction | null {
   }
 
   if (ctx.phase === 'trumpExchange') {
-    const playerID = (['0', '1'] as PlayerID[]).find((id) => !G.trumpSevenDecisions?.includes(id));
-    return playerID ? { move: 'keepTrumpSeven', args: [], playerID } : null;
+    const playerID = currentPlayer(ctx.currentPlayer);
+    return playerID ? { move: 'startPlaying', args: [], playerID } : null;
   }
 
   if (ctx.phase === 'playing') {

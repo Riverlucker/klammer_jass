@@ -96,8 +96,9 @@ export const chooseTrump: Move<JassState> = ({ G, ctx, events, playerID }, suit:
   events.endPhase();
 };
 
-export const exchangeTrumpSeven: Move<JassState> = ({ G, events, playerID }) => {
-  if (!isPlayerID(playerID) || !canExchangeTrumpSeven(G, playerID)) return INVALID_MOVE;
+export const exchangeTrumpSeven: Move<JassState> = ({ G, ctx, playerID }) => {
+  if (!isPlayerID(playerID) || ctx.phase !== 'playing' || ctx.currentPlayer !== playerID
+    || !canExchangeTrumpSeven(G, playerID)) return INVALID_MOVE;
   const sevenIndex = G.hands[playerID].findIndex((card) => card.suit === G.revealedCard?.suit && card.rank === '7');
   if (sevenIndex < 0 || !G.revealedCard) return INVALID_MOVE;
 
@@ -105,13 +106,12 @@ export const exchangeTrumpSeven: Move<JassState> = ({ G, events, playerID }) => 
   G.hands[playerID][sevenIndex] = G.revealedCard;
   G.revealedCard = trumpSeven;
   G.trumpSevenDecisions.push(playerID);
-  events.endPhase();
 };
 
-export const keepTrumpSeven: Move<JassState> = ({ G, events, playerID }) => {
-  if (!isPlayerID(playerID) || !canExchangeTrumpSeven(G, playerID)) return INVALID_MOVE;
+export const keepTrumpSeven: Move<JassState> = ({ G, ctx, playerID }) => {
+  if (!isPlayerID(playerID) || ctx.phase !== 'playing' || ctx.currentPlayer !== playerID
+    || !canExchangeTrumpSeven(G, playerID)) return INVALID_MOVE;
   G.trumpSevenDecisions.push(playerID);
-  events.endPhase();
 };
 
 export const doubleCube: Move<JassState> = ({ G, ctx, events, playerID }) => {

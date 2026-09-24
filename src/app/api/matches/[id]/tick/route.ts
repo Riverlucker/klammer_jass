@@ -13,6 +13,7 @@ import type { ServerGameState } from '@/game/types';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
 import { pusherServer } from '@/lib/pusher';
 import { matchResponseHeaders, notifyMatchUpdate } from '@/lib/matchUpdates';
+import { loadGameRecord } from '@/lib/gameRecord';
 
 const idSchema = z.string().uuid();
 
@@ -34,7 +35,7 @@ export async function POST(
     if (!parsed.success) return NextResponse.json({ error: 'Ungültige Zeitprüfung.' }, { status: 400 });
 
     // Most polls only read. Open a transaction only when a deadline actually changes the game.
-    const gameRecord = await prisma.game.findUnique({ where: { id }, include: { match: true } });
+    const gameRecord = await loadGameRecord(prisma, id, readMatchToken(request, id));
     if (!gameRecord?.match) return NextResponse.json({ error: 'Match nicht gefunden.' }, { status: 404 });
     const playerId = resolvePlayerID(gameRecord.match, readMatchToken(request, id));
     if (!playerId) return NextResponse.json({ error: 'Ungültige Spielsitzung.' }, { status: 403 });

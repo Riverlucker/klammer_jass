@@ -5,6 +5,7 @@ import { createClientState, isServerGameState } from '@/game/playerView';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
 import { matchResponseHeaders } from '@/lib/matchUpdates';
 import { pusherServer } from '@/lib/pusher';
+import { loadGameRecord } from '@/lib/gameRecord';
 
 const idSchema = z.string().uuid();
 
@@ -19,10 +20,7 @@ export async function GET(
       return NextResponse.json({ error: 'Ungültige Match-ID.' }, { status: 400 });
     }
 
-    const gameRecord = await prisma.game.findUnique({
-      where: { id },
-      include: { match: true },
-    });
+    const gameRecord = await loadGameRecord(prisma, id, readMatchToken(request, id));
     if (!gameRecord?.match) {
       return NextResponse.json({ error: 'Match nicht gefunden.' }, { status: 404 });
     }

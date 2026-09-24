@@ -16,6 +16,7 @@ import type { ServerGameState } from '@/game/types';
 import { parseMoveRequest } from '@/lib/apiSchemas';
 import { readMatchToken, resolvePlayerID } from '@/lib/auth';
 import { matchResponseHeaders, notifyMatchUpdate } from '@/lib/matchUpdates';
+import { loadGameRecord } from '@/lib/gameRecord';
 
 class MoveRequestError extends Error {
   constructor(readonly status: number, message: string) {
@@ -33,10 +34,7 @@ export async function POST(request: NextRequest) {
     const { matchId, move, args, stateID } = parsed.data;
 
     const result = await prisma.$transaction(async (transaction) => {
-      const gameRecord = await transaction.game.findUnique({
-        where: { id: matchId },
-        include: { match: true },
-      });
+      const gameRecord = await loadGameRecord(transaction, matchId, readMatchToken(request, matchId));
       if (!gameRecord?.match) throw new MoveRequestError(404, 'Match nicht gefunden.');
 
       const playerId = resolvePlayerID(gameRecord.match, readMatchToken(request, matchId));
@@ -80,7 +78,8 @@ export async function POST(request: NextRequest) {
         ? { state: afterMoveCube, errorType: null }
         : reduceGameMove(currentState, { move, args, playerID: playerId });
       if (!reduced.state) throw new MoveRequestError(422, translateMoveError(reduced.errorType));
-      const nextState = move === 'inspectLastTrick' || move === 'prepareCard' ? reduced.state : armDecisionTimer(reduced.state);
+      const nextState = move === 'inspectLastTrick' || move === 'prepareCard' || move === 'keepTrumpSeven'
+        ? reduced.state : armDecisionTimer(reduced.state);
       await persistState(transaction, matchId, gameRecord.updatedAt, nextState, gameRecord.match.status);
       return { playerId, state: createClientState(nextState, playerId), timedOut: false, trickBlocked: false, extraDealBlocked: false };
     });

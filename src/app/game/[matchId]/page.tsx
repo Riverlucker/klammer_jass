@@ -38,7 +38,6 @@ const PHASE_NAMES: Record<string, string> = {
   waitingRoom: 'Warteraum',
   deal: 'Geben',
   trumpSelection: 'Trumpf wählen',
-  trumpExchange: 'Räubern',
   playing: 'Stich spielen',
   endOfHand: 'Hand beendet',
   endOfGame: 'Spiel beendet',
@@ -81,6 +80,10 @@ function GameTable({ matchId }: { matchId: string }) {
   const [inviteCopyError, setInviteCopyError] = useState(false);
   const dispatchMove: DispatchMove = async (move, args = []) => {
     const success = await sendMove(move, args);
+    if (success && move === 'exchangeTrumpSeven') {
+      setPendingSelection(null);
+      setSelectedMelds([]);
+    }
     if (success && move === 'endMatch') router.replace('/');
     return success;
   };
@@ -101,14 +104,12 @@ function GameTable({ matchId }: { matchId: string }) {
   const revealedExtraCardCount = extraCardPhases.filter((phase) => phase !== 'back').length;
   const allExtraCardsInserted = extraDealActive && extraCardPhases.every((phase) => phase === 'inserted');
   const insertedExtraCards = allExtraCardsInserted ? extraDealCards : [];
-  const trumpSevenHint = ctx.phase === 'trumpExchange' && canExchangeTrumpSeven(G, playerId)
-    ? ' Danach kannst du die offene Karte mit deiner passenden 7 tauschen.'
-    : '';
   const baseHand = extraDealActive
     ? fullHand.filter((card) => !extraDealCards.some((extra) => sameCard(card, extra)))
     : fullHand;
   const hand = sortHand([...baseHand, ...insertedExtraCards], G.trump);
   const myTurn = ctx.currentPlayer === playerId;
+  const canRobNow = ctx.phase === 'playing' && myTurn && canExchangeTrumpSeven(G, playerId);
   const gameOver = Boolean(G.matchResult || ctx.gameover !== undefined);
   const inspectedTrick = inspectingLastTrick ? displayedTrick : null;
   const presentedTrick = !inspectingLastTrick ? displayedTrick : null;
@@ -123,8 +124,6 @@ function GameTable({ matchId }: { matchId: string }) {
   const opponentVisibleTricks = Math.max(0, trickCount(G.pastTricks, opponentId) - (presentedWinner === opponentId ? 1 : 0));
   const canInspectLastTrick = ctx.phase === 'playing' && trickDisplayMilliseconds <= 0 && !extraDealActive
     && !G.cubeOffer && !G.matchPaused && !isSending;
-  const visiblePhase = ctx.phase === 'trumpExchange' && !canExchangeTrumpSeven(G, playerId)
-    ? 'playing' : ctx.phase;
   const deadline = {
     remainingMilliseconds,
     totalSeconds: G.cubeOffer ? G.settings.cubeTimeSeconds : G.settings.moveTimeSeconds,
@@ -195,7 +194,7 @@ function GameTable({ matchId }: { matchId: string }) {
     <main className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerContext}>
-          <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[visiblePhase ?? ''] ?? 'Match beendet'}</p>
+          <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[ctx.phase ?? ''] ?? 'Match beendet'}</p>
           <div className={styles.matchId}>
             <span title={matchId}>{shortId(matchId)}</span>
             <button type="button" onClick={copyInvite}>{copied ? 'Kopiert' : 'ID kopieren'}</button>
@@ -282,13 +281,11 @@ function GameTable({ matchId }: { matchId: string }) {
               <StatusCard
                 title="Drei neue Karten"
                 detail={allExtraCardsInserted
-                  ? `Alle drei Karten werden gemeinsam in deine Hand eingeordnet.${trumpSevenHint}`
+                  ? 'Alle drei Karten werden gemeinsam in deine Hand eingeordnet.'
                   : revealedExtraCardCount === 0
-                    ? `Alle drei Karten liegen verdeckt rechts neben deiner Hand.${trumpSevenHint}`
-                    : `Karte ${revealedExtraCardCount} von 3 wurde aufgedeckt.${trumpSevenHint}`}
+                    ? 'Alle drei Karten liegen verdeckt rechts neben deiner Hand.'
+                    : `Karte ${revealedExtraCardCount} von 3 wurde aufgedeckt.`}
               />
-            ) : ctx.phase === 'trumpExchange' ? (
-              <TrumpSevenExchange G={G} playerId={playerId} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
             ) : G.matchPaused ? (
               <PausedMatch G={G} playerId={playerId} isSending={isSending} onResume={() => void dispatchMove('resumeMatch')} onEnd={() => void dispatchMove('endMatch')} />
             ) : ctx.phase === 'endOfGame' ? (
@@ -298,6 +295,7 @@ function GameTable({ matchId }: { matchId: string }) {
             ) : (
               <>
                 <TableStatus G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
+                {canRobNow && <TrumpSevenExchange isSending={isSending} dispatchMove={dispatchMove} />}
                 {ctx.phase === 'playing' && <MeldExchange G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
                 {ctx.phase === 'endOfHand' && !presentedTrick && (
                   <HandEnd G={G} playerId={playerId} isSending={isSending} onReady={() => void dispatchMove('nextHand')} deadline={deadline} />
@@ -542,30 +540,18 @@ function MeldExchange({ G, playerId, myTurn, isSending, dispatchMove, deadline }
   );
 }
 
-function TrumpSevenExchange({ G, playerId, isSending, dispatchMove, deadline }: {
-  G: PlayerJassState;
-  playerId: PlayerID;
+function TrumpSevenExchange({ isSending, dispatchMove }: {
   isSending: boolean;
   dispatchMove: DispatchMove;
-  deadline: DeadlineInfo;
 }) {
-  const undecidedPlayer = (['0', '1'] as PlayerID[]).find((id) => !(G.trumpSevenDecisions ?? []).includes(id));
-  if (undecidedPlayer !== playerId || !canExchangeTrumpSeven(G, playerId)) {
-    return (
-      <TableStatus G={G} playerId={playerId} myTurn={false} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />
-    );
-  }
-
   return (
-    <StatusCard title="Offene Karte nehmen?" detail="Du hast die 7 in der Farbe der offenen Karte. Tausche sie jetzt gegen die offene Originalkarte oder lasse beide Karten liegen.">
+    <StatusCard title="Offene Karte nehmen?" detail="Vor deiner ersten Karte kannst du mit der passenden 7 räubern. Du kannst auch direkt weiterspielen; bei Zeitablauf gilt die normale Standardaktion.">
       <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('exchangeTrumpSeven')}>
         Mit der passenden 7 räubern
       </button>
-      <TimedDecision deadline={deadline} label="Automatisch bei 0">
-        <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('keepTrumpSeven')}>
-          Karten liegen lassen
-        </button>
-      </TimedDecision>
+      <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('keepTrumpSeven')}>
+        Karten liegen lassen
+      </button>
     </StatusCard>
   );
 }

@@ -3,7 +3,6 @@ import { createDeck, type Card } from './constants';
 import * as JassMoves from './moves';
 import * as PlayMoves from './playMoves';
 import { initialGameScores } from './scoring';
-import { canExchangeTrumpSeven } from './trumpSeven';
 import {
   RULES_VERSION,
   otherPlayer,
@@ -121,22 +120,13 @@ export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> 
         acceptCube: JassMoves.acceptCube,
         declineCube: JassMoves.declineCube,
       },
-      next: 'trumpExchange',
+      next: 'playing',
     },
     trumpExchange: {
-      onBegin: ({ G, events }) => {
-        G.trumpSevenDecisions ??= [];
-        for (const playerId of ['0', '1'] as PlayerID[]) {
-          if (!canExchangeTrumpSeven(G, playerId) && !G.trumpSevenDecisions.includes(playerId)) {
-            G.trumpSevenDecisions.push(playerId);
-          }
-        }
-        if (G.trumpSevenDecisions.length === 2) events.endPhase();
-      },
+      // Compatibility only: persisted games in the old shared exchange phase are migrated on load.
       turn: { activePlayers: { all: 'waiting' } },
       moves: {
-        exchangeTrumpSeven: JassMoves.exchangeTrumpSeven,
-        keepTrumpSeven: JassMoves.keepTrumpSeven,
+        startPlaying: ({ events }) => { events.endPhase(); },
       },
       next: 'playing',
     },
@@ -144,6 +134,8 @@ export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> 
       turn: { order: alternatingOrder() },
       moves: {
         playCard: PlayMoves.playCard,
+        exchangeTrumpSeven: JassMoves.exchangeTrumpSeven,
+        keepTrumpSeven: JassMoves.keepTrumpSeven,
         respondMeld: PlayMoves.respondMeld,
         nameMeld: PlayMoves.nameMeld,
         resolveMeldContest: PlayMoves.resolveMeldContest,

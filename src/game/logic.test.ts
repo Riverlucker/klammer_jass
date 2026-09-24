@@ -36,7 +36,7 @@ describe('Spielphasen', () => {
     state.G.hands[robber].push({ suit: 'Hearts', rank: '7' });
     for (let i = 0; i < 3; i++) state = reduce(state, move('decline', current(state))) as State<JassState>;
     state = reduce(state, move('chooseTrump', current(state), ['Clubs'])) as State<JassState>;
-    expect(state.ctx.phase).toBe('trumpExchange');
+    expect(state.ctx.phase).toBe('playing');
     state = reduce(state, move('exchangeTrumpSeven', robber)) as State<JassState>;
     expect(state.G.hands[robber]).toContainEqual({ suit: 'Hearts', rank: 'K' });
     expect(state.G.hands[robber]).not.toContainEqual({ suit: 'Hearts', rank: '7' });
@@ -136,7 +136,7 @@ describe('Spielphasen', () => {
     state.G.hands[player][0] = { suit: 'Hearts', rank: '7' };
 
     state = reduce(state, move('acceptOriginal', player)) as State<JassState>;
-    expect(state.ctx.phase).toBe('trumpExchange');
+    expect(state.ctx.phase).toBe('playing');
 
     state = reduce(state, move('exchangeTrumpSeven', player)) as State<JassState>;
     expect(state.ctx.phase).toBe('playing');
@@ -155,7 +155,7 @@ describe('Spielphasen', () => {
     state = reduce(state, move('acceptOriginal', player)) as State<JassState>;
 
     expect(state.ctx.phase).toBe('playing');
-    expect(state.G.trumpSevenDecisions).toEqual(expect.arrayContaining(['0', '1']));
+    expect(state.G.trumpSevenDecisions).toEqual([]);
     expect(state.G.revealedCard).toEqual({ suit: 'Diamonds', rank: '7' });
   });
 });

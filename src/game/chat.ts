@@ -159,6 +159,8 @@ function describeAction(
 ): string[] {
   const player = playerName(previous.G, action.playerID);
   switch (action.move) {
+    case 'startPlaying':
+      return [];
     case 'inspectLastTrick': {
       const trick = next.G.pastTricks.at(-1);
       if (!trick) return [];
