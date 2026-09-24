@@ -78,6 +78,23 @@ function GameTable({ matchId }: { matchId: string }) {
   const [copied, setCopied] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteCopyError, setInviteCopyError] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<'score' | 'chat' | null>(null);
+  const scoreToggle = useRef<HTMLButtonElement>(null);
+  const chatToggle = useRef<HTMLButtonElement>(null);
+  function closeMobilePanel() {
+    (mobilePanel === 'score' ? scoreToggle : chatToggle).current?.focus();
+    setMobilePanel(null);
+  }
+  useEffect(() => {
+    if (!mobilePanel) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      (mobilePanel === 'score' ? scoreToggle : chatToggle).current?.focus();
+      setMobilePanel(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobilePanel]);
   const dispatchMove: DispatchMove = async (move, args = []) => {
     const success = await sendMove(move, args);
     if (success && move === 'exchangeTrumpSeven') {
@@ -193,24 +210,32 @@ function GameTable({ matchId }: { matchId: string }) {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div className={styles.headerContext}>
-          <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[ctx.phase ?? ''] ?? 'Match beendet'}</p>
-          <div className={styles.matchId}>
-            <span title={matchId}>{shortId(matchId)}</span>
-            <button type="button" onClick={copyInvite}>{copied ? 'Kopiert' : 'ID kopieren'}</button>
+        <nav className={styles.mobileControls} aria-label="Tischansicht">
+          <button ref={scoreToggle} type="button" aria-expanded={mobilePanel === 'score'} aria-controls="table-score" onClick={() => setMobilePanel(mobilePanel === 'score' ? null : 'score')}>Punkte</button>
+          {!gameOver && ctx.phase !== 'waitingRoom' && <button ref={chatToggle} type="button" aria-expanded={mobilePanel === 'chat'} aria-controls="table-chat" onClick={() => setMobilePanel(mobilePanel === 'chat' ? null : 'chat')}>Chat</button>}
+          <span>Spiel {G.gameNumber} · Hand {G.handNumber}</span>
+        </nav>
+        <div id="table-score" className={styles.headerDetails} data-open={mobilePanel === 'score'}>
+          <button type="button" className={styles.panelClose} onClick={closeMobilePanel} aria-label="Punktestand schließen">×</button>
+          <div className={styles.headerContext}>
+            <p className="eyebrow">Spiel {G.gameNumber} · Hand {G.handNumber} · {PHASE_NAMES[ctx.phase ?? ''] ?? 'Match beendet'}</p>
+            <div className={styles.matchId}>
+              <span title={matchId}>{shortId(matchId)}</span>
+              <button type="button" onClick={copyInvite}>{copied ? 'Kopiert' : 'ID kopieren'}</button>
+            </div>
+            <button type="button" className={styles.inviteLinkButton} onClick={() => void copyInviteLink()}>{inviteCopied ? 'Link kopiert' : 'Einladungslink kopieren'}</button>
+            {inviteCopyError && <p role="alert">Kopieren nicht möglich. <Link href={`/invite/${matchId}`}>Einladungslink öffnen</Link></p>}
           </div>
-          <button type="button" className={styles.inviteLinkButton} onClick={() => void copyInviteLink()}>{inviteCopied ? 'Link kopiert' : 'Einladungslink kopieren'}</button>
-          {inviteCopyError && <p role="alert">Kopieren nicht möglich. <Link href={`/invite/${matchId}`}>Einladungslink öffnen</Link></p>}
-        </div>
-        <div className={styles.headerScoreStrip}>
-          <div className={styles.headerPlayer} data-side="left">
-            <small>Spieler 1</small>
-            <strong>{gamePlayerName(G, '0')}</strong>
-          </div>
-          <ScoreBoard G={G} />
-          <div className={styles.headerPlayer} data-side="right">
-            <small>Spieler 2</small>
-            <strong>{gamePlayerName(G, '1')}</strong>
+          <div className={styles.headerScoreStrip}>
+            <div className={styles.headerPlayer} data-side="left">
+              <small>Spieler 1</small>
+              <strong>{gamePlayerName(G, '0')}</strong>
+            </div>
+            <ScoreBoard G={G} />
+            <div className={styles.headerPlayer} data-side="right">
+              <small>Spieler 2</small>
+              <strong>{gamePlayerName(G, '1')}</strong>
+            </div>
           </div>
         </div>
         <div className={styles.headerStatus}>
@@ -305,7 +330,7 @@ function GameTable({ matchId }: { matchId: string }) {
             </div>
             <div className={styles.playerCardsRow}>
               <PlayerIdentity name={gamePlayerName(G, playerId)} owner="self" speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
-              <div className={styles.hand}>
+              <div className={styles.hand} style={{ '--hand-gaps': Math.max(1, fullHand.length - 1) } as CSSProperties}>
                 {hand.map((card) => {
                   const leadCard = G.currentTrick.cards[G.currentTrick.leadPlayer];
                   const legal = ctx.phase === 'playing' && Boolean(G.trump) && isMoveLegal(
@@ -346,6 +371,8 @@ function GameTable({ matchId }: { matchId: string }) {
           </section>
           </section>
           <ChatBox
+            mobileOpen={mobilePanel === 'chat'}
+            onClose={closeMobilePanel}
             messages={G.chatMessages ?? []}
             playerId={playerId}
             playerNames={G.playerNames}
@@ -875,7 +902,9 @@ function TimedDecision({ deadline, label, children }: { deadline: DeadlineInfo; 
   );
 }
 
-function ChatBox({ messages, playerId, playerNames, isSending, onSend }: {
+function ChatBox({ messages, playerId, playerNames, isSending, onSend, mobileOpen, onClose }: {
+  mobileOpen: boolean;
+  onClose: () => void;
   messages: ChatMessage[];
   playerId: PlayerID;
   playerNames: Record<PlayerID, string | null>;
@@ -894,7 +923,7 @@ function ChatBox({ messages, playerId, playerNames, isSending, onSend }: {
     scrollToLatest();
     const frame = window.requestAnimationFrame(scrollToLatest);
     return () => window.cancelAnimationFrame(frame);
-  }, [latestMessageId]);
+  }, [latestMessageId, mobileOpen]);
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -904,13 +933,14 @@ function ChatBox({ messages, playerId, playerNames, isSending, onSend }: {
   }
 
   return (
-    <aside className={styles.chatPanel} aria-label="Tisch-Chat">
+    <aside id="table-chat" className={styles.chatPanel} data-open={mobileOpen} aria-label="Tisch-Chat">
       <header>
         <div>
           <p className="eyebrow">Am Tisch</p>
           <h2>Spielverlauf &amp; Chat</h2>
         </div>
         <span aria-label={`${messages.length} Nachrichten`}>{messages.length}</span>
+        <button type="button" className={styles.panelClose} onClick={onClose} aria-label="Chat schließen">×</button>
       </header>
       <div className={styles.chatMessages} ref={messageList} role="log" aria-live="polite">
         {messages.length === 0 ? (
