@@ -38,6 +38,64 @@ function finishTrumpExchange(state: ServerGameState): ServerGameState {
 }
 
 describe('Serverseitige Zugzeiten', () => {
+  it.each([true, false])('lässt beim Bedienen einen Terz vor dem Ausspielen auswählen: %s', (announce) => {
+    let state = readyState();
+    const front = current(state);
+    const dealer = otherPlayer(front);
+    state = structuredClone(finishTrumpExchange(apply(state, 'acceptOriginal', front)));
+    state.G.extraDealUntil = null;
+    state.G.trump = 'Clubs';
+    state.G.hands[front] = [{ suit: 'Hearts', rank: 'A' }, { suit: 'Spades', rank: 'A' }];
+    state.G.hands[dealer] = [
+      { suit: 'Hearts', rank: '7' }, { suit: 'Hearts', rank: '8' }, { suit: 'Hearts', rank: '9' },
+      { suit: 'Spades', rank: '7' },
+    ];
+    state = stampDeadline(apply(state, 'playCard', front, [state.G.hands[front][0]]));
+    const selectionStartedAt = Date.now();
+    state.G.deadlineAt = selectionStartedAt + 500;
+    const before = structuredClone(state);
+    const card = state.G.hands[dealer][0];
+    state = apply(state, 'prepareCard', dealer, [card, ['Terz']]);
+    expect(state.G.deadlineAt).toBeGreaterThanOrEqual(selectionStartedAt + state.G.settings.moveTimeSeconds * 1000);
+    expect(state.ctx).toEqual(before.ctx);
+    expect(state.G.hands).toEqual(before.G.hands);
+    expect(state.G.currentTrick).toEqual(before.G.currentTrick);
+    expect(state.G.pastTricks).toEqual(before.G.pastTricks);
+    expect(state.G.handScores).toEqual(before.G.handScores);
+    expect(state.G.shownMelds).toEqual(before.G.shownMelds);
+    expect(state.G.chatMessages).toEqual(before.G.chatMessages);
+    expect(state.G.meldAnnouncement).toEqual(before.G.meldAnnouncement);
+    // Even near the new deadline, cancelling, reopening and toggling cannot buy more time.
+    const remainingDeadline = Date.now() + 5_000;
+    state.G.deadlineAt = remainingDeadline;
+    state = apply(state, 'prepareCard', dealer);
+    expect(state.G.timeoutSelection).toBeNull();
+    state = apply(state, 'prepareCard', dealer, [state.G.hands[dealer][1], []]);
+    state = apply(state, 'prepareCard', dealer, [card, ['Terz']]);
+    expect(state.G.deadlineAt).toBe(remainingDeadline);
+    const expired = structuredClone(state);
+    expired.G.deadlineAt = Date.now() - 1;
+    expect(reduceGameMove(expired, { move: 'prepareCard', playerID: dealer, args: [card, []] }).state).toBeNull();
+    if (!announce) state = apply(state, 'prepareCard', dealer, [card, []]);
+    state = apply(state, 'playCard', dealer, [card, announce ? ['Terz'] : []]);
+    expect(state.G.pastTricks).toHaveLength(1);
+    expect(state.G.handScoreDetails[dealer].terz).toBe(announce ? 20 : 0);
+  });
+
+  it('verlängert die Kartenauswahl ohne verfügbare Meldung nicht', () => {
+    let state = readyState();
+    const front = current(state);
+    state = structuredClone(finishTrumpExchange(apply(state, 'acceptOriginal', front)));
+    state.G.extraDealUntil = null;
+    state.G.trump = 'Clubs';
+    state.G.hands[front] = [{ suit: 'Hearts', rank: '7' }, { suit: 'Spades', rank: 'A' }];
+    state.G.deadlineAt = Date.now() + 500;
+    const deadline = state.G.deadlineAt;
+    state = apply(state, 'prepareCard', front, [state.G.hands[front][0], []]);
+    expect(state.G.deadlineAt).toBe(deadline);
+    expect(state.G.meldSelectionTurn).not.toBe(state.ctx.turn);
+  });
+
   it.each([true, false])('übernimmt die vorgemerkte Karte mit Terz-Checkbox %s beim Timeout', (announce) => {
     let state = readyState();
     const front = current(state);
@@ -50,10 +108,10 @@ describe('Serverseitige Zugzeiten', () => {
       { suit: 'Spades', rank: 'A' },
     ];
     state = stampDeadline(state, Date.now());
-    const deadline = state.G.deadlineAt;
     const card = state.G.hands[front][0];
     const melds = announce ? ['Terz'] : [];
     state = apply(state, 'prepareCard', front, [card, ['Terz']]);
+    const deadline = state.G.deadlineAt;
     if (!announce) state = apply(state, 'prepareCard', front, [card, []]);
     expect(state.G.deadlineAt).toBe(deadline);
     expect(state.G.hands[front]).toHaveLength(4);

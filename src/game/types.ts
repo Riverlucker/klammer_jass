@@ -147,6 +147,7 @@ export interface JassState {
   trickWinner: PlayerID | null;
   timeoutCard: Card | null;
   timeoutSelection?: { playerID: PlayerID; card: Card; melds: MeldType[] } | null;
+  meldSelectionTurn?: number | null;
   trickDisplayUntil: number | null;
   inspectingLastTrick?: boolean;
   extraDealStartedAt: number | null;

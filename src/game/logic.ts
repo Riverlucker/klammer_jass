@@ -195,6 +195,7 @@ export function resetHandState(G: JassState) {
   G.redealUntil = null;
   G.deadlineAt = null;
   G.meldAnnouncement = null;
+  G.meldSelectionTurn = null;
 }
 
 export function emptyScoreDetails() {

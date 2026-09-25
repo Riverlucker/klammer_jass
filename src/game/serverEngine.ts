@@ -7,7 +7,7 @@ import { getGoodMeldReplyOptions, meldReplySeed } from './meldReplies';
 import { expectedMeldDecision, expectedMeldResponse } from './playMoves';
 import type { JassState, MeldType, PlayerID, ServerGameState } from './types';
 import { isPlayerID, otherPlayer } from './types';
-import { findBella, getBestSequenceMeld, isCard, isMoveLegal } from './validation';
+import { findBella, getAvailableMeldTypes, getBestSequenceMeld, isCard, isMoveLegal } from './validation';
 import { TRICK_DISPLAY_MILLISECONDS } from './trickDisplay';
 import { REDEAL_DISPLAY_MILLISECONDS } from './redeal';
 
@@ -39,6 +39,19 @@ export function reduceGameMove(
       card: action.args[0] as NonNullable<JassState['timeoutCard']>,
       melds: (action.args[1] ?? []) as MeldType[],
     };
+    const card = next.G.timeoutSelection?.card;
+    const canSelectMeld = card && next.G.trump && getAvailableMeldTypes(next.G.hands[action.playerID], next.G.trump, action.playerID)
+      .some((type) => type === 'Bella'
+        ? !next.G.announcedBella.includes(action.playerID) && card.suit === next.G.trump && (card.rank === 'K' || card.rank === 'Q')
+        : next.G.pastTricks.length === 0 && !next.G.meldContest);
+    // Choosing a meld is a separate decision. Reserve time once per turn, even if
+    // the player cancels, changes cards or toggles the default declarations.
+    if (canSelectMeld && next.G.meldSelectionTurn !== next.ctx.turn) {
+      next.G.meldSelectionTurn = next.ctx.turn;
+      if (next.G.deadlineAt !== null) {
+        next.G.deadlineAt = Math.max(next.G.deadlineAt, Date.now() + next.G.settings.moveTimeSeconds * 1000);
+      }
+    }
     next._stateID += 1;
     return { state: next, errorType: null };
   }

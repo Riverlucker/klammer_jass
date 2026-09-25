@@ -419,6 +419,7 @@ function GameTable({ matchId }: { matchId: string }) {
                 </label>
               ))}
             </div>
+            <TimeoutNotice deadline={deadline}>Bei 0 wird die Karte mit den ausgewählten Meldungen automatisch gelegt.</TimeoutNotice>
             <div className="button-row">
               <button className="button button-primary" type="button" disabled={isSending} onClick={() => void confirmCard()}>Karte legen</button>
               <button className="button" type="button" disabled={isSending} onClick={() => { void dispatchMove('prepareCard').then((saved) => { if (saved) setPendingSelection(null); }); }}>Abbrechen</button>
