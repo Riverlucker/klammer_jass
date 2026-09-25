@@ -22,7 +22,8 @@
 .scoreEyes { display: grid !important; justify-items: center; gap: 1px !important; margin: 2px 0; }
 .scoreEyes strong { font-size: 1.42rem; }
 .gameLayout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 12px; align-items: start; }
-.table { display: grid; grid-template-rows: minmax(140px, 1fr) 210px minmax(max-content, 1fr); min-height: calc(100vh - 102px); padding: 8px 0 0; }
+/* Let the action area size itself without forcing equally tall empty space above the deck. */
+.table { display: grid; grid-template-rows: minmax(140px, 1fr) 210px auto; min-height: calc(100vh - 102px); padding: 8px 0 0; }
 .table[data-settlement='true'] { grid-template-rows: 0 0 auto; min-height: 0; padding-top: 0; }
 .table[data-settlement='true'] .opponent { height: 0; padding: 0; }
 .table[data-settlement='true'] .center { display: none; }
