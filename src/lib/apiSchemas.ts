@@ -40,6 +40,7 @@ const MOVE_NAMES = [
   'nextGame',
   'endMatch',
   'resumeMatch',
+  'requestPause',
 ] as const;
 
 export const createMatchSchema = z.object({

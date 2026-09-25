@@ -14,7 +14,7 @@ export const setReady: Move<JassState> = ({ G, events, playerID }) => {
 };
 
 export const nextHand: Move<JassState> = ({ G, events, playerID }) => {
-  if (!isPlayerID(playerID) || G.gameResult || G.matchResult) return INVALID_MOVE;
+  if (!isPlayerID(playerID) || G.gameResult || G.matchResult || G.matchPaused) return INVALID_MOVE;
   if (!G.readyPlayers.includes(playerID)) G.readyPlayers.push(playerID);
   if (G.readyPlayers.length === 2) {
     G.dealer = G.lastHandResult?.dealerForNextHand ?? G.dealer;
@@ -160,7 +160,7 @@ export const nextGame: Move<JassState> = ({ G, events, playerID }) => {
 };
 
 export const endMatch: Move<JassState> = ({ G, events, playerID }) => {
-  if (!isPlayerID(playerID) || !G.gameResult || G.matchResult) return INVALID_MOVE;
+  if (!isPlayerID(playerID) || (!G.gameResult && !(G.matchPaused && G.pauseReason === 'player-request')) || G.matchResult) return INVALID_MOVE;
   const winner = G.matchPoints['0'] === G.matchPoints['1']
     ? null
     : G.matchPoints['0'] > G.matchPoints['1'] ? '0' : '1';
@@ -186,11 +186,33 @@ export const pauseMatch: Move<JassState> = ({ G }) => {
   G.deadlineAt = null;
 };
 
-export const resumeMatch: Move<JassState> = ({ G, events, playerID }) => {
-  if (!isPlayerID(playerID) || !G.matchPaused || !G.gameResult || G.matchResult) return INVALID_MOVE;
+export const requestPause: Move<JassState> = ({ G, ctx, playerID }) => {
+  if (!isPlayerID(playerID) || G.matchPaused || G.matchResult
+    || (ctx.phase !== 'endOfHand' && ctx.phase !== 'endOfGame')) return INVALID_MOVE;
+  G.matchPaused = true;
+  G.pauseReason = 'player-request';
+  G.resumePlayers = [];
+  G.readyPlayers = [];
+  G.nextGamePlayers = [];
+  G.deadlineAt = null;
+  G.decisionTimer = null;
+};
+
+export const resumeMatch: Move<JassState> = ({ G, ctx, events, playerID }) => {
+  if (!isPlayerID(playerID) || !G.matchPaused || G.matchResult
+    || (!G.gameResult && !(ctx.phase === 'endOfHand' && G.pauseReason === 'player-request'))) return INVALID_MOVE;
   if (!G.resumePlayers.includes(playerID)) G.resumePlayers.push(playerID);
   if (G.resumePlayers.length === 2) {
-    startNextGame(G);
+    if (ctx.phase === 'endOfHand') {
+      G.dealer = G.lastHandResult?.dealerForNextHand ?? G.dealer;
+      G.vorne = otherPlayer(G.dealer);
+      G.handNumber += 1;
+      G.matchPaused = false;
+      G.pauseReason = null;
+      G.resumePlayers = [];
+      G.readyPlayers = [];
+      G.consecutiveTimeouts = { '0': 0, '1': 0 };
+    } else startNextGame(G);
     events.endPhase();
   }
 };

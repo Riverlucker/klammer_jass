@@ -341,7 +341,7 @@ function GameTable({ matchId }: { matchId: string }) {
                 {!settlementVisible && <TableStatus G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
                 {ctx.phase === 'playing' && <MeldExchange G={G} playerId={playerId} myTurn={myTurn} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} />}
                 {ctx.phase === 'endOfHand' && !presentedTrick && (
-                  <HandEnd G={G} playerId={playerId} isSending={isSending} onReady={() => void dispatchMove('nextHand')} deadline={deadline} />
+                  <HandEnd G={G} playerId={playerId} isSending={isSending} onReady={() => void dispatchMove('nextHand')} onPause={() => void dispatchMove('requestPause')} deadline={deadline} />
                 )}
               </>
             )}
@@ -749,6 +749,7 @@ function GameEnd({ G, playerId, isSending, dispatchMove, deadline }: {
         {!nextReady ? (
           <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('nextGame')}>Nächstes Spiel</button>
         ) : <div className={styles.pulse}>Warten auf den Gegner</div>}
+        <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('requestPause')}>Unterbrechung beantragen</button>
         <button className="button button-danger" type="button" disabled={isSending} onClick={() => void dispatchMove('endMatch')}>Match beenden</button>
       </div>
     </section>
@@ -767,7 +768,7 @@ function PausedMatch({ G, playerId, isSending, onResume, onEnd }: {
     <section className={styles.pausedMatch}>
       <GameResultHero G={G} playerId={playerId} paused />
       <div className={styles.pauseAction}>
-        <h2>{G.pauseReason === 'inactivity' ? 'Spiel unterbrochen' : 'Match pausiert'}</h2>
+        <h2>{G.pauseReason === 'inactivity' || G.pauseReason === 'player-request' ? 'Spiel unterbrochen' : 'Match pausiert'}</h2>
         <p>{G.pauseReason === 'inactivity' ? 'Beide Spieler haben dreimal in Folge nicht rechtzeitig geantwortet. Der Spielstand bleibt erhalten.' : 'Beide Spieler müssen bestätigen, dass sie weiterspielen möchten.'}</p>
         <div className="button-row">
         {!ready
@@ -848,7 +849,7 @@ function WaitingRoom({ G, playerId, isSending, onReady }: { G: PlayerJassState; 
   );
 }
 
-function HandEnd({ G, playerId, isSending, onReady, deadline }: { G: PlayerJassState; playerId: PlayerID; isSending: boolean; onReady: () => void; deadline: DeadlineInfo }) {
+function HandEnd({ G, playerId, isSending, onReady, onPause, deadline }: { G: PlayerJassState; playerId: PlayerID; isSending: boolean; onReady: () => void; onPause: () => void; deadline: DeadlineInfo }) {
   const result = G.lastHandResult;
   const ready = G.readyPlayers.includes(playerId);
   return (
@@ -870,6 +871,7 @@ function HandEnd({ G, playerId, isSending, onReady, deadline }: { G: PlayerJassS
           <TimeoutNotice deadline={deadline}>Bei 0 wird der Gegner automatisch bereit gemeldet.</TimeoutNotice>
         </>
       )}
+      <button className="button" type="button" disabled={isSending} onClick={onPause}>Unterbrechung beantragen</button>
     </section>
   );
 }

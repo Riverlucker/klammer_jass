@@ -152,7 +152,7 @@ export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> 
     },
     endOfHand: {
       turn: { activePlayers: { all: 'waiting' } },
-      moves: { nextHand: JassMoves.nextHand },
+      moves: { nextHand: JassMoves.nextHand, requestPause: JassMoves.requestPause, resumeMatch: JassMoves.resumeMatch, endMatch: JassMoves.endMatch },
       next: 'deal',
     },
     endOfGame: {
@@ -161,6 +161,7 @@ export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> 
         nextGame: JassMoves.nextGame,
         endMatch: JassMoves.endMatch,
         pauseMatch: JassMoves.pauseMatch,
+        requestPause: JassMoves.requestPause,
         resumeMatch: JassMoves.resumeMatch,
       },
       next: 'deal',

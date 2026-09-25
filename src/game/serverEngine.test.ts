@@ -38,6 +38,62 @@ function finishTrumpExchange(state: ServerGameState): ServerGameState {
 }
 
 describe('Serverseitige Zugzeiten', () => {
+  function completedHand() {
+    let state = readyState();
+    state = finishTrumpExchange(apply(state, 'acceptOriginal', current(state)));
+    for (let i = 0; state.ctx.phase === 'playing' && i < 60; i++) {
+      const action = timeoutAction(state)!;
+      state = apply(state, action.move, action.playerID, action.args);
+    }
+    expect(state.ctx.phase).toBe('endOfHand');
+    return state;
+  }
+
+  it.each(['0', '1'] as const)('lässt Spieler %s nach der Hand unterbrechen und verlangt beide neuen Zusagen', (player) => {
+    let state = completedHand();
+    const before = structuredClone(state);
+    state = apply(state, 'nextHand', otherPlayer(player));
+    state = apply(state, 'requestPause', player);
+    expect(state.G.readyPlayers).toEqual([]);
+    expect(state.G.pauseReason).toBe('player-request');
+    expect(state.G.deadlineAt).toBeNull();
+    expect(timeoutAction(state)).toBeNull();
+    expect(reduceGameMove(state, { move: 'nextHand', playerID: player, args: [] }).state).toBeNull();
+    state = apply(state, 'resumeMatch', player);
+    state = apply(state, 'resumeMatch', player);
+    expect(state.G.matchPaused).toBe(true);
+    expect(state.ctx.phase).toBe('endOfHand');
+    state = apply(state, 'resumeMatch', otherPlayer(player));
+    expect(state.G.matchPaused).toBe(false);
+    expect(state.ctx.phase).toBe('trumpSelection');
+    expect(state.G.handNumber).toBe(before.G.handNumber + 1);
+    expect(state.G.gameNumber).toBe(before.G.gameNumber);
+    expect(state.G.scores).toEqual(before.G.scores);
+    expect(state.G.matchPoints).toEqual(before.G.matchPoints);
+    expect(state.G.dealer).toBe(before.G.lastHandResult!.dealerForNextHand);
+  });
+
+  it('erlaubt beiden Spielern das endgültige Beenden einer beantragten Pause', () => {
+    for (const player of ['0', '1'] as const) {
+      let state = apply(completedHand(), 'requestPause', '0');
+      state = apply(state, 'endMatch', player);
+      expect(state.G.matchResult?.endedBy).toBe(player);
+      expect(state.G.matchEndedAt).toBeGreaterThan(0);
+    }
+  });
+
+  it('erlaubt die beantragte Pause auch nach Spielende, aber nicht während einer Hand', () => {
+    let state = readyState();
+    expect(reduceGameMove(state, { move: 'requestPause', playerID: '0', args: [] }).state).toBeNull();
+    state = apply(state, 'doubleCube', current(state));
+    state = apply(state, 'declineCube', current(state));
+    state = apply(state, 'requestPause', '1');
+    state = apply(state, 'resumeMatch', '0');
+    state = apply(state, 'resumeMatch', '1');
+    expect(state.G.gameNumber).toBe(2);
+    expect(state.G.matchPaused).toBe(false);
+  });
+
   it.each([true, false])('lässt beim Bedienen einen Terz vor dem Ausspielen auswählen: %s', (announce) => {
     let state = readyState();
     const front = current(state);

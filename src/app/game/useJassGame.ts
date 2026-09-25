@@ -32,7 +32,8 @@ export type MoveName =
   | 'resolveMeldContest'
   | 'nextGame'
   | 'endMatch'
-  | 'resumeMatch';
+  | 'resumeMatch'
+  | 'requestPause';
 
 interface StateResponse {
   success?: true;

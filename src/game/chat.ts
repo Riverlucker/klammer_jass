@@ -245,6 +245,8 @@ function describeAction(
       return [`${player} beendet das Match.`];
     case 'pauseMatch':
       return ['Der Dealer pausiert das Match.'];
+    case 'requestPause':
+      return [`${player} beantragt eine Unterbrechung. Weiter geht es, wenn beide Spieler bereit sind.`];
     case 'interruptMatch':
       return ['Spiel unterbrochen: Beide Spieler haben dreimal in Folge nicht rechtzeitig geantwortet.'];
     case 'resumeMatch':

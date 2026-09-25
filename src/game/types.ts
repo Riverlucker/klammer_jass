@@ -111,7 +111,7 @@ export interface JassState {
   matchEndedAt?: number;
   completedHands?: number;
   consecutiveTimeouts?: Record<PlayerID, number>;
-  pauseReason?: 'inactivity' | 'game-end' | null;
+  pauseReason?: 'inactivity' | 'game-end' | 'player-request' | null;
   deck: Card[];
   hands: Record<PlayerID, Card[]>;
   trump: Suit | null;
