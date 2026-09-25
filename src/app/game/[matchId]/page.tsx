@@ -270,6 +270,7 @@ function GameTable({ matchId }: { matchId: string }) {
           <OpponentArea
             name={gamePlayerName(G, opponentId)}
             score={G.scores[opponentId]}
+            cubeValue={G.settings.cubeEnabled && G.cube.holder === opponentId ? G.cube.value : undefined}
             dealing={redealActive}
             count={G.handCounts[opponentId]}
             revealedCards={revealedMeldCards(G, opponentId, now)}
@@ -281,6 +282,11 @@ function GameTable({ matchId }: { matchId: string }) {
 
           <div className={styles.center}>
             <div className={styles.tableScene}>
+              {G.settings.cubeEnabled && G.cube.holder === null && (
+                <div className={styles.centerCube} title="Würfel in der Mitte – beide Spieler dürfen in ihrem Zug drehen">
+                  <CubeFace value={G.cube.value} label={`Würfel ${G.cube.value}, in der Mitte`} />
+                </div>
+              )}
               {!settlementVisible && (
                 <TalonAndOriginal
                   card={G.revealedCard}
@@ -305,8 +311,8 @@ function GameTable({ matchId }: { matchId: string }) {
           <section className={styles.playerArea} aria-label="Deine Hand">
             {canDouble && !G.cubeOffer && (
               <div className={styles.playerActions}>
-                <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>
-                  Drehen
+                <button className={`button ${styles.cubeButton}`} type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>
+                  Drehen <CubeFace value={G.cube.value * 2} />
                 </button>
               </div>
             )}
@@ -339,7 +345,7 @@ function GameTable({ matchId }: { matchId: string }) {
             )}
             </div>
             <div className={styles.playerCardsRow}>
-              <PlayerIdentity name={gamePlayerName(G, playerId)} score={G.scores[playerId]} owner="self" speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
+              <PlayerIdentity name={gamePlayerName(G, playerId)} score={G.scores[playerId]} owner="self" cubeValue={G.settings.cubeEnabled && G.cube.holder === playerId ? G.cube.value : undefined} speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
               <div className={styles.hand} style={{ '--hand-gaps': Math.max(1, fullHand.length - 1) } as CSSProperties}>
                 {hand.map((card, index) => {
                   if (redealActive) return (
@@ -396,7 +402,7 @@ function GameTable({ matchId }: { matchId: string }) {
       )}
 
       {canRobNow && !extraDealActive && trickDisplayMilliseconds <= 0 && G.revealedCard && (
-        <TrumpSevenExchange card={G.revealedCard} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} error={error} canDouble={canDouble} />
+        <TrumpSevenExchange card={G.revealedCard} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} error={error} canDouble={canDouble} cubeValue={G.cube.value} />
       )}
 
       {pendingCard && G.trump && !canRobNow && (
@@ -416,7 +422,7 @@ function GameTable({ matchId }: { matchId: string }) {
             <div className="button-row">
               <button className="button button-primary" type="button" disabled={isSending} onClick={() => void confirmCard()}>Karte legen</button>
               <button className="button" type="button" disabled={isSending} onClick={() => { void dispatchMove('prepareCard').then((saved) => { if (saved) setPendingSelection(null); }); }}>Abbrechen</button>
-              {canDouble && <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>Drehen</button>}
+              {canDouble && <button className={`button ${styles.cubeButton}`} type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>Drehen <CubeFace value={G.cube.value * 2} /></button>}
             </div>
           </section>
         </div>
@@ -443,13 +449,14 @@ function TableStatus({ G, playerId, myTurn, isSending, dispatchMove, deadline }:
     if (G.cubeOffer.from === playerId) {
       return (
         <StatusCard title="Würfel angeboten" detail="Der Gegner entscheidet über die Verdopplung.">
+          <CubeFace value={G.cube.value * 2} />
           <TimeoutNotice deadline={deadline}>Bei 0 gibt der Gegner dieses Spiel automatisch auf.</TimeoutNotice>
         </StatusCard>
       );
     }
     return (
       <StatusCard title="Würfel angeboten" detail={`Der Einsatz soll von ${G.cube.value} auf ${G.cube.value * 2} steigen.`}>
-        <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('acceptCube')}>Annehmen</button>
+        <button className={`button button-primary ${styles.cubeButton}`} type="button" disabled={isSending} onClick={() => void dispatchMove('acceptCube')}>Annehmen <CubeFace value={G.cube.value * 2} /></button>
         <TimedDecision deadline={deadline} label="Automatisch bei 0">
           <button className="button button-danger" type="button" disabled={isSending} onClick={() => void dispatchMove('declineCube')}>Spiel aufgeben</button>
         </TimedDecision>
@@ -585,13 +592,14 @@ function MeldExchange({ G, playerId, myTurn, isSending, dispatchMove, deadline }
   );
 }
 
-function TrumpSevenExchange({ card, isSending, dispatchMove, deadline, error, canDouble }: {
+function TrumpSevenExchange({ card, isSending, dispatchMove, deadline, error, canDouble, cubeValue }: {
   card: Card;
   isSending: boolean;
   dispatchMove: DispatchMove;
   deadline: DeadlineInfo;
   error: string | null;
   canDouble: boolean;
+  cubeValue: number;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useLayoutEffect(() => {
@@ -614,7 +622,7 @@ function TrumpSevenExchange({ card, isSending, dispatchMove, deadline, error, ca
       <div className="button-row">
         <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('exchangeTrumpSeven')}>Räubern</button>
         <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('keepTrumpSeven')}>Nicht räubern</button>
-        {canDouble && <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>Drehen</button>}
+        {canDouble && <button className={`button ${styles.cubeButton}`} type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>Drehen <CubeFace value={cubeValue * 2} /></button>}
       </div>
       <TimeoutNotice deadline={deadline}>Bei 0 wird nicht geräubert und die normale Standardaktion ausgeführt.</TimeoutNotice>
       {error && <p role="alert">{error}</p>}
@@ -1045,11 +1053,11 @@ function TimeoutNotice({ deadline, children }: { deadline: DeadlineInfo; childre
   );
 }
 
-function OpponentArea({ name, score, count, tricks, speech, revealedCards, inspectedTrick, onInspect, dealing }: { name: string; score: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void; dealing: boolean }) {
+function OpponentArea({ name, score, cubeValue, count, tricks, speech, revealedCards, inspectedTrick, onInspect, dealing }: { name: string; score: number; cubeValue?: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void; dealing: boolean }) {
   return (
     <section className={styles.opponent}>
       <div className={styles.opponentCardsRow}>
-        <PlayerIdentity name={name} score={score} owner="opponent" speech={speech} />
+        <PlayerIdentity name={name} score={score} owner="opponent" speech={speech} cubeValue={cubeValue} />
         <div className={styles.cardBacks}>{Array.from({ length: count }, (_, index) => {
           const card = revealedCards[index];
           return card
@@ -1077,13 +1085,27 @@ const AVATAR_PALETTES = [
   { background: '#6b4a5f', skin: '#e7b58e', hair: '#5c3427' },
 ] as const;
 
-function PlayerIdentity({ name, score, owner, speech = null }: { name: string; score: number; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null }) {
+function CubeFace({ value, label = `Würfel ${value}` }: { value: number; label?: string }) {
+  const pips = value === 1 ? [[20, 20]] : value === 2 ? [[12, 12], [28, 28]] : value === 4 ? [[12, 12], [28, 12], [12, 28], [28, 28]] : [];
+  return (
+    <svg className={styles.cubeFace} viewBox="0 0 40 40" role="img" aria-label={label}>
+      <rect x="2" y="2" width="36" height="36" rx="7" fill="#fff5d7" stroke="#b99243" strokeWidth="2" />
+      {pips.length > 0 ? pips.map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="3.5" fill="#193c2e" />)
+        : <text x="20" y="21" dominantBaseline="middle" textAnchor="middle" fill="#193c2e" fontFamily="Arial, sans-serif" fontWeight="800" fontSize={value < 100 ? 22 : value < 1000 ? 16 : 12} textLength={value >= 1000 ? 29 : undefined} lengthAdjust="spacingAndGlyphs">{value}</text>}
+    </svg>
+  );
+}
+
+function PlayerIdentity({ name, score, owner, speech = null, cubeValue }: { name: string; score: number; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null; cubeValue?: number }) {
   return (
     <div className={styles.playerIdentity} data-owner={owner}>
       {speech && <AvatarSpeechBubble speech={speech} />}
       <PlayerAvatar name={name} />
-      <span className={styles.avatarScore} aria-label={`${name}: ${score} Punkte`}><b>{score}</b><small>Punkte</small></span>
-      <strong>{name}</strong>
+      <span className={styles.avatarScore} aria-label={`${name}: ${score} Punkte`}><b>{score}</b></span>
+      <div className={styles.playerCaption}>
+        {cubeValue !== undefined && <span className={styles.heldCube} title={`${name} hat den Würfel und darf im eigenen Zug erneut drehen`}><CubeFace value={cubeValue} label={`Würfel ${cubeValue}, bei ${name}`} /></span>}
+        <strong>{name}</strong>
+      </div>
     </div>
   );
 }
