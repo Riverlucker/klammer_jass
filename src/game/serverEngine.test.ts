@@ -194,6 +194,7 @@ describe('Serverseitige Zugzeiten', () => {
     expect(state.G.hands['0']).toHaveLength(0);
     expect(state.G.hands['1']).toHaveLength(0);
     expect(state.G.pastTricks).toHaveLength(9);
+    expect(state.G.completedHands).toBe(1);
     expect(state.G.lastHandResult).not.toBeNull();
     expect(state.G.trickDisplayUntil).not.toBeNull();
     expect(state.G.trickDisplayUntil!).toBeGreaterThan(Date.now());
@@ -211,7 +212,7 @@ describe('Serverseitige Zugzeiten', () => {
     expect(stamped.G.deadlineAt).toBe(stamped.G.extraDealUntil! + stamped.G.settings.moveTimeSeconds * 1000);
   });
 
-  it('reserviert nach einem vollständigen Stich drei Sekunden Anzeigezeit', () => {
+  it('reserviert nach einem vollständigen Stich vier Sekunden Anzeigezeit', () => {
     let state = readyState();
     state = apply(state, 'acceptOriginal', current(state));
     state = finishTrumpExchange(state);

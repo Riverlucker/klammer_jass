@@ -84,6 +84,10 @@ export async function POST(
 
       const nextState = structuredClone(gameRecord.state);
       nextState.G.playerNames[seat] = player.name;
+      if (parsed.data.avatar !== undefined) {
+        nextState.G.playerAvatars = { ...nextState.G.playerAvatars, [seat]: parsed.data.avatar };
+      }
+      nextState._stateID += 1;
       await transaction.game.update({
         where: { id },
         data: { state: toPrismaJson(nextState) },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TrickDisplay } from './trickDisplay';
+import { TrickDisplay, isTrickCelebrating } from './trickDisplay';
 import type { Trick } from './types';
 
 const trick: Trick = {
@@ -12,13 +12,21 @@ const completed = {
 };
 
 describe('Stichanzeige bei verzögerten Online-Updates', () => {
-  it('zeigt beiden Browsern beide Karten drei Sekunden ab ihrem jeweiligen Empfang', () => {
+  it('markiert erst nach einer Sekunde und endet eine Sekunde vor dem Einsammeln', () => {
+    expect(isTrickCelebrating(4000)).toBe(false);
+    expect(isTrickCelebrating(3001)).toBe(false);
+    expect(isTrickCelebrating(3000)).toBe(true);
+    expect(isTrickCelebrating(1701)).toBe(true);
+    expect(isTrickCelebrating(1700)).toBe(false);
+    expect(isTrickCelebrating(700)).toBe(false);
+  });
+  it('zeigt beiden Browsern beide Karten vier Sekunden ab ihrem jeweiligen Empfang', () => {
     const firstPlayer = new TrickDisplay();
     const secondPlayer = new TrickDisplay();
     const fast = secondPlayer.receive(completed, 1100)!;
     const delayed = firstPlayer.receive(completed, 6500)!;
-    expect(fast.until).toBe(4100);
-    expect(delayed.until).toBe(9500);
+    expect(fast.until).toBe(5100);
+    expect(delayed.until).toBe(10500);
     expect(delayed.trick.cards).toEqual(trick.cards);
     expect(delayed.inspecting).toBe(false);
   });
@@ -27,7 +35,7 @@ describe('Stichanzeige bei verzögerten Online-Updates', () => {
     const display = new TrickDisplay();
     const initial = display.receive(completed, 6500)!;
     expect(display.receive(structuredClone(completed), 8500)).toBe(initial);
-    expect(display.receive(completed, 10000)?.until).toBe(9500);
+    expect(display.receive(completed, 10000)?.until).toBe(10500);
   });
 
   it('bewahrt den Stich, auch wenn der Server inzwischen schon die nächste Karte verarbeitet hat', () => {
@@ -37,7 +45,7 @@ describe('Stichanzeige bei verzögerten Online-Updates', () => {
     expect(display.receive(advanced, 7000)).toBe(initial);
     expect(display.receive(advanced, 7000)?.trick.cards['1']).toEqual({ suit: 'Hearts', rank: 'A' });
     // Even when the first received update already contains a subsequent move, the last trick is still shown.
-    expect(new TrickDisplay().receive(advanced, 7000)?.until).toBe(10000);
+    expect(new TrickDisplay().receive(advanced, 7000)?.until).toBe(11000);
   });
 
   it('zeigt erneutes Anschauen vollständig, ohne es bei jedem Update neu zu starten', () => {
@@ -46,15 +54,15 @@ describe('Stichanzeige bei verzögerten Online-Updates', () => {
     const inspection = { ...completed, inspectingLastTrick: true, trickDisplayUntil: 13000 };
     const shown = display.receive(inspection, 14500)!;
     expect(shown.inspecting).toBe(true);
-    expect(shown.until).toBe(17500);
+    expect(shown.until).toBe(18500);
     expect(display.receive(inspection, 16000)).toBe(shown);
-    expect(display.receive({ ...inspection, trickDisplayUntil: 21000 }, 20000)?.until).toBe(23000);
+    expect(display.receive({ ...inspection, trickDisplayUntil: 21000 }, 20000)?.until).toBe(24000);
   });
 
   it('zeigt bei einer neuen Hand keinen alten Stich mehr', () => {
     const display = new TrickDisplay();
     display.receive(completed, 1000);
     expect(display.receive({ ...completed, handNumber: 2, pastTricks: [], trickDisplayUntil: null }, 5000)).toBeNull();
-    expect(display.receive({ ...completed, handNumber: 2 }, 6000)?.until).toBe(9000);
+    expect(display.receive({ ...completed, handNumber: 2 }, 6000)?.until).toBe(10000);
   });
 });

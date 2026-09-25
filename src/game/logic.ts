@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: MatchSettings = {
 
 type MatchSetupData = MatchSettings & {
   playerNames?: Partial<Record<PlayerID, string | null>>;
+  playerAvatars?: Partial<Record<PlayerID, number | null>>;
 };
 
 export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> = {
@@ -37,6 +38,9 @@ export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> 
     const vorne = otherPlayer(dealer);
     return {
       rulesVersion: RULES_VERSION,
+      playerAvatars: setupData?.playerAvatars ?? {},
+      completedHands: 0,
+      consecutiveTimeouts: { '0': 0, '1': 0 },
       playerNames: {
         '0': setupData?.playerNames?.['0'] ?? null,
         '1': setupData?.playerNames?.['1'] ?? null,

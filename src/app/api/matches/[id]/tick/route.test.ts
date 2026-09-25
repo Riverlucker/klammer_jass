@@ -43,6 +43,20 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); });
 
 describe('Online-Zeitprüfung über die API', () => {
+  it('speichert die Unterbrechung nach drei Timeouts beider Spieler und stoppt die Uhr', async () => {
+    for (let i = 0; i < 6; i++) {
+      vi.setSystemTime(stored.G.deadlineAt!);
+      expect((await tick()).status).toBe(200);
+    }
+    expect(stored.G.matchPaused).toBe(true);
+    expect(stored.G.consecutiveTimeouts).toEqual({ '0': 3, '1': 3 });
+    expect(stored.G.deadlineAt).toBeNull();
+    expect(stored.G.decisionTimer).toBeNull();
+    const before = stored._stateID;
+    vi.setSystemTime(Date.now() + 120000);
+    expect((await tick()).status).toBe(200);
+    expect(stored._stateID).toBe(before);
+  });
   it('startet nach Anzeige und führt nach einer zu frühen Prüfung später den Standardzug aus', async () => {
     const player = mocks.player;
     vi.setSystemTime(6_000);

@@ -26,6 +26,77 @@ export function reduceGameMove(
   state: ServerGameState,
   action: EngineAction,
 ): { state: ServerGameState | null; errorType: string | null } {
+  if (state.G.matchResult || state.ctx.gameover !== undefined) return invalidMove();
+  if (state.G.matchPaused && action.move !== 'resumeMatch' && action.move !== 'endMatch') return invalidMove();
+  const result = reduceMove(state, action);
+  if (result.state) {
+    result.state.G.consecutiveTimeouts = { ...result.state.G.consecutiveTimeouts ?? { '0': 0, '1': 0 }, [action.playerID]: 0 };
+    recordMatchProgress(state, result.state);
+  }
+  return result;
+}
+
+function invalidMove() { return { state: null, errorType: 'action/invalid_move' }; }
+
+function recordMatchProgress(previous: ServerGameState, next: ServerGameState) {
+  if (previous.G.completedHands !== undefined && next.G.pastTricks.length > previous.G.pastTricks.length
+    && next.G.hands['0'].length === 0 && next.G.hands['1'].length === 0) {
+    next.G.completedHands = previous.G.completedHands + 1;
+  }
+  if (next.G.matchResult && !previous.G.matchResult) next.G.matchEndedAt = Date.now();
+}
+
+// Both timeout entry points stop as soon as each player has missed three consecutive decisions.
+export function reduceTimedOutMove(state: ServerGameState): { state: ServerGameState | null; errorType: string | null } {
+  if (!isDeadlineExpired(state) || state.G.matchPaused || state.G.matchResult) return invalidMove();
+  const action = timeoutAction(state);
+  if (!action) return invalidMove();
+  const counts = { ...state.G.consecutiveTimeouts ?? { '0': 0, '1': 0 } };
+  counts[action.playerID] += 1;
+  if (counts['0'] >= 3 && counts['1'] >= 3) {
+    const next = structuredClone(state);
+    next._stateID += 1;
+    next.G.consecutiveTimeouts = counts;
+    next.G.matchPaused = true;
+    next.G.pauseReason = 'inactivity';
+    next.G.resumePlayers = [];
+    next.G.deadlineAt = null;
+    next.G.decisionTimer = null;
+    appendDealerComments(state, next, { ...action, move: 'interruptMatch', args: [] });
+    return { state: next, errorType: null };
+  }
+  const result = reduceMove(state, action);
+  if (result.state) {
+    result.state.G.consecutiveTimeouts = counts;
+    recordMatchProgress(state, result.state);
+  }
+  return result;
+}
+
+function reduceMove(state: ServerGameState, action: EngineAction): { state: ServerGameState | null; errorType: string | null } {
+  if (state.G.matchPaused && state.G.pauseReason === 'inactivity') {
+    if (action.move !== 'resumeMatch' && action.move !== 'endMatch') return invalidMove();
+    const next = structuredClone(state);
+    next._stateID += 1;
+    if (action.move === 'endMatch') {
+      const winner = next.G.matchPoints['0'] === next.G.matchPoints['1'] ? null
+        : next.G.matchPoints['0'] > next.G.matchPoints['1'] ? '0' : '1';
+      next.G.matchResult = { winner, finalMatchPoints: { ...next.G.matchPoints }, endedBy: action.playerID, reason: 'player-ended' };
+      next.ctx.gameover = next.G.matchResult;
+      next.G.resumePlayers = [];
+      next.G.nextGamePlayers = [];
+    } else {
+      if (!next.G.resumePlayers.includes(action.playerID)) next.G.resumePlayers.push(action.playerID);
+      if (next.G.resumePlayers.length === 2) {
+        next.G.matchPaused = false;
+        next.G.pauseReason = null;
+        next.G.resumePlayers = [];
+        next.G.consecutiveTimeouts = { '0': 0, '1': 0 };
+      }
+    }
+    appendDealerComments(state, next, action);
+    return { state: next, errorType: null };
+  }
   if (action.move === 'prepareCard') {
     if (state.ctx.phase !== 'playing' || state.ctx.currentPlayer !== action.playerID
       || isDeadlineExpired(state) || isTrickBeingDisplayed(state) || isExtraDealBeingDisplayed(state)

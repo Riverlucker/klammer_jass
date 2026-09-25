@@ -15,14 +15,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ungültige Match-Einstellungen.' }, { status: 400 });
     }
 
-    const { playerName, password, ...settings } = parsed.data;
+    const { playerName, password, avatar, ...settings } = parsed.data;
     const displayName = normalizePlayerName(playerName).name;
     const { token, tokenHash } = createPlayerToken();
-    const initialState = InitializeGame({
+    const initialState = structuredClone(InitializeGame({
       game: JassGame,
       numPlayers: 2,
-      setupData: { ...settings, playerNames: { '0': displayName, '1': null } },
-    });
+      setupData: { ...settings, playerNames: { '0': displayName, '1': null }, playerAvatars: { '0': avatar ?? null } },
+    }));
+    initialState.G.matchStartedAt = Date.now();
 
     const match = await prisma.$transaction(async (transaction) => {
       const player = await authenticatePlayer(transaction, playerName, password);

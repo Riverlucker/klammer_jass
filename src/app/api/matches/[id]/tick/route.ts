@@ -6,7 +6,7 @@ import { createClientState, isServerGameState } from '@/game/playerView';
 import { acknowledgeDecision, armDecisionTimer } from '@/game/decisionTimer';
 import {
   isDeadlineExpired,
-  reduceGameMove,
+  reduceTimedOutMove,
   timeoutAction,
 } from '@/game/serverEngine';
 import type { ServerGameState } from '@/game/types';
@@ -49,7 +49,7 @@ export async function POST(
     if (isDeadlineExpired(state)) {
       const action = timeoutAction(state);
       if (action) {
-        const reduced = reduceGameMove(state, action);
+        const reduced = reduceTimedOutMove(state);
         if (reduced.state) state = armDecisionTimer(reduced.state);
       }
     }

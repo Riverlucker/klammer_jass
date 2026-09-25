@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InitializeGame } from 'boardgame.io/internal';
-import { appendDealerComments, appendPlayerChat } from './chat';
+import { appendDealerComments, appendPlayerChat, formatSuitNames } from './chat';
 import { JassGame } from './logic';
 import { createClientState } from './playerView';
 import { revealedMeldCards } from './meldReveal';
@@ -19,7 +19,7 @@ describe('Tisch-Chat', () => {
     state = reduceGameMove(state, { move: 'setReady', playerID: '1', args: [] }).state!;
     const announcement = state.G.chatMessages.at(-1)!;
     expect(announcement).toMatchObject({ kind: 'dealer', playerId: null });
-    expect(announcement.text).toMatch(/^(7|8|9|10|J|Q|K|A) (Pik|Herz|Karo|Kreuz) liegt offen\.$/);
+    expect(announcement.text).toMatch(/^(7|8|9|10|J|Q|K|A) [♠♥♦♣] liegt offen\.$/);
     expect(announcement.text.startsWith(`${state.G.revealedCard!.rank} `)).toBe(true);
     expect(announcement.speech).toBeUndefined();
 
@@ -44,7 +44,7 @@ describe('Tisch-Chat', () => {
     if (move === 'nextHand') next.G.handNumber += 1;
     else next.G.gameNumber += 1;
     appendDealerComments(previous, next, { move, playerID: '0', args: [] });
-    expect(next.G.chatMessages.at(-1)).toMatchObject({ text: 'K Karo liegt offen.', playerId: null, gameNumber: next.G.gameNumber, handNumber: next.G.handNumber });
+    expect(next.G.chatMessages.at(-1)).toMatchObject({ text: 'K ♦ liegt offen.', playerId: null, gameNumber: next.G.gameNumber, handNumber: next.G.handNumber });
   });
 
   it('verrät beim Verzicht aufs Räubern weder im Chat noch in der Sprechblase die 7', () => {
@@ -57,13 +57,19 @@ describe('Tisch-Chat', () => {
   });
 
   it('kommentiert einen tatsächlich ausgeführten Tausch weiterhin öffentlich', () => {
-    const previous = initialState();
+    const previous = structuredClone(initialState());
+    previous.G.revealedCard = { suit: 'Spades', rank: 'A' };
     const next = structuredClone(previous);
+    next.G.revealedCard = { suit: 'Spades', rank: '7' };
     appendDealerComments(previous, next, { move: 'exchangeTrumpSeven', args: [], playerID: '1' });
     expect(createClientState(next, '0').G.chatMessages[0]).toMatchObject({
-      text: 'Gast tauscht die passende 7 gegen die offene Originalkarte.',
-      speechText: 'Ich tausche die passende 7!',
+      text: 'Gast nimmt sich das ♠ Ass mit der 7.',
+      speechText: 'Ich nehme mir das ♠ Ass mit der 7!',
     });
+  });
+
+  it('zeigt auch alte Chattexte mit Farbsymbolen', () => {
+    expect(formatSuitNames('Pik Ass, Herz König, Karo 7 und Kreuz Bube')).toBe('♠ Ass, ♥ König, ♦ 7 und ♣ Bube');
   });
 
   it('blendet alte automatische 7-Hinweise aus gespeicherten Matches aus', () => {
@@ -137,7 +143,7 @@ describe('Tisch-Chat', () => {
     }, 15_000);
 
     expect(next.G.chatMessages.map((message) => message.text)).toEqual([
-      'Gast spielt Herz Ass.',
+      'Gast spielt ♥ Ass.',
       'Gast meldet Terz.',
       'Gast meldet Bella.',
     ]);
@@ -182,8 +188,8 @@ describe('Tisch-Chat', () => {
     expect(next.G.chatMessages[0]).toMatchObject({
       playerId: '1',
       speech: 'trump',
-      text: 'Gast wählt Herz als Trumpf.',
-      speechText: 'Herz!',
+      text: 'Gast wählt ♥ als Trumpf.',
+      speechText: '♥!',
     });
   });
 });

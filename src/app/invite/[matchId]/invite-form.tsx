@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MatchSettings } from '@/game/types';
+import AvatarPicker from '@/app/components/AvatarPicker';
 
 export default function InviteForm({ matchId, host, settings, full }: {
   matchId: string; host: string; settings: MatchSettings; full: boolean;
@@ -10,6 +11,7 @@ export default function InviteForm({ matchId, host, settings, full }: {
   const router = useRouter();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [avatar, setAvatar] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function join(event: FormEvent) {
@@ -20,7 +22,7 @@ export default function InviteForm({ matchId, host, settings, full }: {
     try {
       const response = await fetch(`/api/matches/${encodeURIComponent(matchId)}/join`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: name, password }),
+        body: JSON.stringify({ playerName: name, password, avatar }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? 'Beitritt fehlgeschlagen.');
@@ -44,6 +46,7 @@ export default function InviteForm({ matchId, host, settings, full }: {
       <label className="field"><span>Passwort (optional)</span><input type="password" maxLength={128} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
         <small>Bei geschützten Namen das bestehende Passwort verwenden. Ohne Passwort spielst du als Gast.</small>
       </label>
+      <AvatarPicker name={name} value={avatar} onChange={setAvatar} disabled={sending} />
       <button className="button button-primary" type="submit" disabled={sending || !name.trim()}>{sending ? 'Beitritt läuft …' : `Dem Spiel von ${host} beitreten`}</button>
     </form>
   </section>;

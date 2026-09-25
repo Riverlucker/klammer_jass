@@ -16,6 +16,7 @@ const passwordSchema = z.string()
   .max(128)
   .transform((value) => value.trim().length === 0 ? '' : value)
   .refine((value) => value.length === 0 || value.length >= 4);
+const avatarSchema = z.number().int().min(0).max(15).nullable().optional();
 const MOVE_NAMES = [
   'prepareCard',
   'inspectLastTrick',
@@ -42,6 +43,7 @@ const MOVE_NAMES = [
 ] as const;
 
 export const createMatchSchema = z.object({
+  avatar: avatarSchema,
   playerName: playerNameSchema,
   password: passwordSchema,
   targetScore: z.coerce.number().int().refine((value) => TARGET_SCORES.includes(value as (typeof TARGET_SCORES)[number])),
@@ -54,6 +56,7 @@ export const createMatchSchema = z.object({
 }).strict();
 
 export const joinMatchSchema = z.object({
+  avatar: avatarSchema,
   playerName: playerNameSchema,
   password: passwordSchema,
 }).strict();

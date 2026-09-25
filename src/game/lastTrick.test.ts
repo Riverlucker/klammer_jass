@@ -27,17 +27,17 @@ describe('Letzten Stich ansehen', () => {
     const result = reduceGameMove(state, { move: 'inspectLastTrick', playerID, args: [] });
     expect(result.errorType).toBeNull();
     const next = result.state!;
-    expect(next.G.deadlineAt).toBe(23_000);
+    expect(next.G.deadlineAt).toBe(24_000);
     expect(next.G.inspectingLastTrick).toBe(true);
     expect(next.ctx).toEqual(state.ctx);
     expect(next.G.handScores).toEqual(state.G.handScores);
     expect(next.G.pastTricks).toEqual(state.G.pastTricks);
     expect(next._stateID).toBe(state._stateID + 1);
     expect(next.G.chatMessages.at(-1)?.text).toBe(`${playerID === '0' ? 'Chris' : 'Gast'} schaut letzten Stich: ♥ T, ♥ 9`);
-    expect(isTrickBeingDisplayed(next, 12_999)).toBe(true);
-    expect(isTrickBeingDisplayed(next, 13_000)).toBe(false);
+    expect(isTrickBeingDisplayed(next, 13_999)).toBe(true);
+    expect(isTrickBeingDisplayed(next, 14_000)).toBe(false);
     for (const player of ['0', '1'] as const) {
-      expect(createClientState(next, player).G.trickDisplayUntil).toBe(13_000);
+      expect(createClientState(next, player).G.trickDisplayUntil).toBe(14_000);
       expect(createClientState(next, player).G.inspectingLastTrick).toBe(true);
     }
     expect(reduceGameMove(next, { move: 'inspectLastTrick', playerID: '0', args: [] }).state).toBeNull();

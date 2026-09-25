@@ -12,11 +12,22 @@ interface CommentedAction {
 }
 
 const SUIT_NAMES: Record<Suit, string> = {
-  Spades: 'Pik',
-  Hearts: 'Herz',
-  Diamonds: 'Karo',
-  Clubs: 'Kreuz',
+  Spades: '♠',
+  Hearts: '♥',
+  Diamonds: '♦',
+  Clubs: '♣',
 };
+
+export function formatSuitNames(text: string): string {
+  const symbols: Record<string, string> = { Pik: '♠', Herz: '♥', Karo: '♦', Kreuz: '♣' };
+  return text.replace(/\b(Pik|Herz|Karo|Kreuz)\b/g, (suit) => symbols[suit]);
+}
+
+function exchangedCard(state: ServerGameState): string {
+  const card = state.G.revealedCard;
+  const article = card?.rank === 'A' ? 'das' : card && ['J', 'K'].includes(card.rank) ? 'den' : 'die';
+  return card ? `${article} ${SUIT_NAMES[card.suit]} ${RANK_NAMES[card.rank]}` : 'die offene Karte';
+}
 
 const RANK_NAMES: Record<Rank, string> = {
   '7': 'Sieben',
@@ -108,8 +119,8 @@ function directSpeech(previous: ServerGameState, next: ServerGameState, action: 
       : previous.G.trumpSelectionPassedCount === 2 ? 'Immer noch nicht!' : 'Neu geben!';
     case 'announceSmallGame': return 'Ein Kleines!';
     case 'acceptSmallGame': return 'Du darfst wählen!';
-    case 'overruleSmallGame': return 'Ich spiele Kreuz!';
-    case 'exchangeTrumpSeven': return 'Ich tausche die passende 7!';
+    case 'overruleSmallGame': return 'Ich spiele ♣!';
+    case 'exchangeTrumpSeven': return `Ich nehme mir ${exchangedCard(previous)} mit der 7!`;
     case 'respondMeld': return meldResponse(action.args);
     case 'nameMeld': return next.G.meldContest?.namedRank ? `Bis ${RANK_NAMES[next.G.meldContest.namedRank]}!` : text;
     case 'resolveMeldContest': return action.args[0] === 'show' ? 'Meine ist höher!' : 'Deine ist gut!';
@@ -201,13 +212,13 @@ function describeAction(
     case 'acceptSmallGame':
       return [`${player} gibt die freie Trumpfwahl weiter.`];
     case 'overruleSmallGame':
-      return [`${player} übernimmt das Kleine. Kreuz ist Trumpf.`];
+      return [`${player} übernimmt das Kleine. ♣ ist Trumpf.`];
     case 'chooseTrump': {
       const suit = isSuit(action.args[0]) ? action.args[0] : next.G.trump;
       return suit ? [`${player} wählt ${SUIT_NAMES[suit]} als Trumpf.`] : [];
     }
     case 'exchangeTrumpSeven':
-      return [`${player} tauscht die passende 7 gegen die offene Originalkarte.`];
+      return [`${player} nimmt sich ${exchangedCard(previous)} mit der 7.`];
     case 'keepTrumpSeven':
       return [];
     case 'doubleCube':
@@ -234,6 +245,8 @@ function describeAction(
       return [`${player} beendet das Match.`];
     case 'pauseMatch':
       return ['Der Dealer pausiert das Match.'];
+    case 'interruptMatch':
+      return ['Spiel unterbrochen: Beide Spieler haben dreimal in Folge nicht rechtzeitig geantwortet.'];
     case 'resumeMatch':
       return [`${player} möchte das Match fortsetzen.`];
     default:

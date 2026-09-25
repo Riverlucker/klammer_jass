@@ -106,6 +106,12 @@ export interface MatchResult {
 export interface JassState {
   rulesVersion: typeof RULES_VERSION;
   playerNames: Record<PlayerID, string | null>;
+  playerAvatars?: Partial<Record<PlayerID, number | null>>;
+  matchStartedAt?: number;
+  matchEndedAt?: number;
+  completedHands?: number;
+  consecutiveTimeouts?: Record<PlayerID, number>;
+  pauseReason?: 'inactivity' | 'game-end' | null;
   deck: Card[];
   hands: Record<PlayerID, Card[]>;
   trump: Suit | null;

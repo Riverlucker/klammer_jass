@@ -10,6 +10,7 @@ import {
   isRedealBeingDisplayed,
   isTrickBeingDisplayed,
   reduceGameMove,
+  reduceTimedOutMove,
   timeoutAction,
 } from '@/game/serverEngine';
 import type { ServerGameState } from '@/game/types';
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
       if (isDeadlineExpired(currentState)) {
         const automaticAction = timeoutAction(currentState);
         if (automaticAction) {
-          const automatic = reduceGameMove(currentState, automaticAction);
+          const automatic = reduceTimedOutMove(currentState);
           if (!automatic.state) throw new MoveRequestError(409, 'Der automatische Zug konnte nicht ausgeführt werden.');
           const nextState = armDecisionTimer(automatic.state);
           await persistState(transaction, matchId, gameRecord.updatedAt, nextState, gameRecord.match.status);
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
     if (result.trickBlocked) {
       return NextResponse.json(
-        { error: result.extraDealBlocked ? 'Die Karten werden noch ausgeteilt.' : 'Der Stich wird noch drei Sekunden lang angezeigt.', ...result, serverTime: Date.now() },
+        { error: result.extraDealBlocked ? 'Die Karten werden noch ausgeteilt.' : 'Der Stich wird noch angezeigt.', ...result, serverTime: Date.now() },
         { status: 409 },
       );
     }

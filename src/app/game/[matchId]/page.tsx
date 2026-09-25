@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import Avatar from '@/app/components/Avatar';
+import RulesDialog from '@/app/components/RulesDialog';
+import { formatSuitNames } from '@/game/chat';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { NON_TRUMP_ORDER, RANKS, SUITS, TRUMP_ORDER, type Card, type Suit } from '@/game/constants';
 import { groupChatMessages } from '@/game/chatGroups';
@@ -10,6 +13,7 @@ import { extraCardPhase } from '@/game/extraDeal';
 import { REDEAL_REVEAL_AT_MILLISECONDS } from '@/game/redeal';
 import { canExchangeTrumpSeven } from '@/game/trumpSeven';
 import { canDouble as canPlayerDouble } from '@/game/cube';
+import { isTrickCelebrating, TRICK_COLLECTION_MILLISECONDS } from '@/game/trickDisplay';
 import {
   otherPlayer,
   type MeldDecision,
@@ -51,7 +55,6 @@ export default function GamePage() {
 }
 
 function GameTable({ matchId }: { matchId: string }) {
-  const router = useRouter();
   const {
     state,
     playerId,
@@ -83,6 +86,7 @@ function GameTable({ matchId }: { matchId: string }) {
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteCopyError, setInviteCopyError] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'score' | 'chat' | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const scoreToggle = useRef<HTMLButtonElement>(null);
   const chatToggle = useRef<HTMLButtonElement>(null);
   function closeMobilePanel() {
@@ -105,7 +109,6 @@ function GameTable({ matchId }: { matchId: string }) {
       setPendingSelection(null);
       setSelectedMelds([]);
     }
-    if (success && move === 'endMatch') router.replace('/');
     return success;
   };
 
@@ -138,7 +141,7 @@ function GameTable({ matchId }: { matchId: string }) {
   const tableTrick = presentedTrick ?? G.currentTrick;
   const hasTableTrick = Object.keys(tableTrick.cards).length > 0;
   const presentedWinner = presentedTrick?.winner ?? null;
-  const collectingTrick = trickDisplayMilliseconds > 0 && trickDisplayMilliseconds <= 700;
+  const collectingTrick = trickDisplayMilliseconds > 0 && trickDisplayMilliseconds <= TRICK_COLLECTION_MILLISECONDS;
   const settlementVisible = !presentedTrick && (ctx.phase === 'endOfHand' || ctx.phase === 'endOfGame');
   const canDouble = trickDisplayMilliseconds <= 0 && !extraDealActive && !redealActive && canPlayerDouble(G, ctx.phase ?? null, ctx.currentPlayer, playerId);
   const cardsBlocked = canRobNow || trickDisplayMilliseconds > 0 || extraDealActive || redealActive || cardPlayBlocked(G, playerId);
@@ -218,6 +221,7 @@ function GameTable({ matchId }: { matchId: string }) {
         <nav className={styles.mobileControls} aria-label="Tischansicht">
           <button ref={scoreToggle} type="button" aria-expanded={mobilePanel === 'score'} aria-controls="table-score" onClick={() => setMobilePanel(mobilePanel === 'score' ? null : 'score')}>Spielinfo</button>
           {!gameOver && ctx.phase !== 'waitingRoom' && <button ref={chatToggle} type="button" aria-expanded={mobilePanel === 'chat'} aria-controls="table-chat" onClick={() => setMobilePanel(mobilePanel === 'chat' ? null : 'chat')}>Chat</button>}
+          <button type="button" aria-haspopup="dialog" aria-controls="table-rules" onClick={() => setRulesOpen(true)}>Regeln</button>
           <span>Spiel {G.gameNumber} · Hand {G.handNumber} · bis {G.settings.targetScore}</span>
         </nav>
         <div id="table-score" className={styles.headerDetails} data-open={mobilePanel === 'score'}>
@@ -229,6 +233,7 @@ function GameTable({ matchId }: { matchId: string }) {
               <button type="button" onClick={copyInvite}>{copied ? 'Kopiert' : 'ID kopieren'}</button>
             </div>
             <button type="button" className={styles.inviteLinkButton} onClick={() => void copyInviteLink()}>{inviteCopied ? 'Link kopiert' : 'Einladungslink kopieren'}</button>
+            <button type="button" className={styles.rulesDesktopButton} aria-haspopup="dialog" onClick={() => setRulesOpen(true)}>Regeln</button>
             {inviteCopyError && <p role="alert">Kopieren nicht möglich. <Link href={`/invite/${matchId}`}>Einladungslink öffnen</Link></p>}
           </div>
           <div className={styles.headerScoreStrip}>
@@ -247,6 +252,7 @@ function GameTable({ matchId }: { matchId: string }) {
           <Deadline seconds={remainingSeconds} cube={Boolean(G.cubeOffer)} trickDisplayMilliseconds={trickDisplayMilliseconds} extraDealMilliseconds={extraDealMilliseconds} redealMilliseconds={redealMilliseconds} />
         </div>
       </header>
+      {rulesOpen && <RulesDialog settings={G.settings} onClose={() => setRulesOpen(false)} />}
 
       {error && (
         <div className="notice notice-error" role="alert">
@@ -269,6 +275,7 @@ function GameTable({ matchId }: { matchId: string }) {
           >
           <OpponentArea
             name={gamePlayerName(G, opponentId)}
+            avatar={G.playerAvatars?.[opponentId]}
             score={G.scores[opponentId]}
             matchPoints={G.matchPoints[opponentId]}
             cubeValue={G.settings.cubeEnabled && G.cube.holder === opponentId ? G.cube.value : undefined}
@@ -283,7 +290,7 @@ function GameTable({ matchId }: { matchId: string }) {
 
           <div className={styles.center}>
             <div className={styles.tableScene}>
-              {G.cube.holder == null && (
+              {G.settings.cubeEnabled && G.cube.holder == null && (
                 <div className={styles.centerCube} title={G.settings.cubeEnabled ? 'Würfel in der Mitte – beide Spieler dürfen in ihrem Zug drehen' : `Würfelwert ${G.cube.value} – Drehen ist für dieses Match ausgeschaltet`}>
                   <CubeFace value={G.cube.value} label={`Würfel ${G.cube.value}, in der Mitte`} />
                 </div>
@@ -303,6 +310,7 @@ function GameTable({ matchId }: { matchId: string }) {
                     trick={tableTrick}
                     playerId={playerId}
                     collecting={Boolean(presentedTrick) && collectingTrick}
+                    celebrating={presentedTrick?.winner === playerId && isTrickCelebrating(trickDisplayMilliseconds)}
                   />
                 )}
               </div>
@@ -346,7 +354,7 @@ function GameTable({ matchId }: { matchId: string }) {
             )}
             </div>
             <div className={styles.playerCardsRow}>
-              <PlayerIdentity name={gamePlayerName(G, playerId)} score={G.scores[playerId]} matchPoints={G.matchPoints[playerId]} owner="self" cubeValue={G.settings.cubeEnabled && G.cube.holder === playerId ? G.cube.value : undefined} speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
+              <PlayerIdentity name={gamePlayerName(G, playerId)} avatar={G.playerAvatars?.[playerId]} score={G.scores[playerId]} matchPoints={G.matchPoints[playerId]} owner="self" cubeValue={G.settings.cubeEnabled && G.cube.holder === playerId ? G.cube.value : undefined} speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
               <div className={styles.hand} style={{ '--hand-gaps': Math.max(1, fullHand.length - 1) } as CSSProperties}>
                 {hand.map((card, index) => {
                   if (redealActive) return (
@@ -759,10 +767,11 @@ function PausedMatch({ G, playerId, isSending, onResume, onEnd }: {
     <section className={styles.pausedMatch}>
       <GameResultHero G={G} playerId={playerId} paused />
       <div className={styles.pauseAction}>
-        <p><strong>Match pausiert.</strong> Beide Spieler müssen bestätigen, dass sie weiterspielen möchten.</p>
+        <h2>{G.pauseReason === 'inactivity' ? 'Spiel unterbrochen' : 'Match pausiert'}</h2>
+        <p>{G.pauseReason === 'inactivity' ? 'Beide Spieler haben dreimal in Folge nicht rechtzeitig geantwortet. Der Spielstand bleibt erhalten.' : 'Beide Spieler müssen bestätigen, dass sie weiterspielen möchten.'}</p>
         <div className="button-row">
         {!ready
-          ? <button className="button button-primary" type="button" disabled={isSending} onClick={onResume}>Match fortsetzen</button>
+          ? <button className="button button-primary" type="button" disabled={isSending} onClick={onResume}>Ich bin bereit – fortsetzen</button>
           : <div className={styles.pulse}>Warten auf den Gegner</div>}
         <button className="button button-danger" type="button" disabled={isSending} onClick={onEnd}>Match beenden</button>
         </div>
@@ -867,13 +876,26 @@ function HandEnd({ G, playerId, isSending, onReady, deadline }: { G: PlayerJassS
 
 function MatchEnd({ G, playerId }: { G: PlayerJassState; playerId: PlayerID }) {
   const endedBy = G.matchResult?.endedBy;
-  const title = endedBy === playerId ? 'Du hast das Match verlassen.'
-    : endedBy ? `${gamePlayerName(G, endedBy)} hat das Match verlassen.` : 'Das Match ist beendet.';
+  const title = endedBy === playerId ? 'Du hast das Match beendet.'
+    : endedBy ? `${gamePlayerName(G, endedBy)} hat das Match beendet.` : 'Das Match ist beendet.';
+  const matchTime = (time?: number) => time === undefined ? 'Nicht erfasst' : new Intl.DateTimeFormat('de-AT', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Vienna' }).format(time);
   return (
     <section className={styles.matchEnd}>
-      <p className="eyebrow">Match beendet</p><h1>{title}</h1>
-      <p>Das Match wurde nach Spiel {G.gameNumber} beendet.</p>
-      <div className={styles.finalScore}><strong>{G.matchPoints[playerId]}</strong><span>:</span><strong>{G.matchPoints[playerId === '0' ? '1' : '0']}</strong></div>
+      <p className="eyebrow">Abschluss</p><h1>Match beendet</h1><p>{title}</p>
+      <div className={styles.breakdown}>
+        {([playerId, otherPlayer(playerId)] as PlayerID[]).map((id) => <div key={id}>
+          <Avatar name={gamePlayerName(G, id)} selection={G.playerAvatars?.[id]} className={styles.summaryAvatar} />
+          <span>{gamePlayerName(G, id)}</span><strong>{G.matchPoints[id]}</strong><small>Matchpunkte · {G.scores[id]} Augen im letzten Spiel</small>
+        </div>)}
+      </div>
+      <dl className={styles.matchFacts}>
+        <div><dt>Spiele</dt><dd>{G.gameNumber}</dd></div>
+        <div><dt>Abgeschlossene Hände</dt><dd>{G.completedHands ?? 'Nicht erfasst'}</dd></div>
+        <div><dt>Letzte Hand</dt><dd>{G.handNumber}</dd></div>
+        <div><dt>Startzeit (Wien)</dt><dd>{matchTime(G.matchStartedAt)}</dd></div>
+        <div><dt>Endzeit (Wien)</dt><dd>{matchTime(G.matchEndedAt)}</dd></div>
+        <div><dt>Spielziel</dt><dd>{G.settings.targetScore} Augen</dd></div>
+      </dl>
       <Link className="button button-primary" href="/">Zurück zur Lobby</Link>
     </section>
   );
@@ -1012,7 +1034,7 @@ function ChatBox({ messages, playerId, playerNames, isSending, onSend, mobileOpe
                 <strong>{group.kind === 'dealer' ? 'Dealer' : firstEntry.playerId ? playerNames[firstEntry.playerId] ?? (isSelf ? 'Du' : 'Gast') : 'Spieler'}</strong>
                 <time dateTime={new Date(firstEntry.createdAt).toISOString()}>{chatTime(firstEntry.createdAt)}</time>
               </div>
-              {group.messages.map((entry) => <p key={entry.id}>{entry.text}</p>)}
+              {group.messages.map((entry) => <p key={entry.id}>{formatSuitNames(entry.text)}</p>)}
             </article>
           );
         })}
@@ -1055,11 +1077,11 @@ function TimeoutNotice({ deadline, children }: { deadline: DeadlineInfo; childre
   );
 }
 
-function OpponentArea({ name, score, matchPoints, cubeValue, count, tricks, speech, revealedCards, inspectedTrick, onInspect, dealing }: { name: string; score: number; matchPoints: number; cubeValue?: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void; dealing: boolean }) {
+function OpponentArea({ name, avatar, score, matchPoints, cubeValue, count, tricks, speech, revealedCards, inspectedTrick, onInspect, dealing }: { name: string; avatar?: number | null; score: number; matchPoints: number; cubeValue?: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void; dealing: boolean }) {
   return (
     <section className={styles.opponent}>
       <div className={styles.opponentCardsRow}>
-        <PlayerIdentity name={name} score={score} matchPoints={matchPoints} owner="opponent" speech={speech} cubeValue={cubeValue} />
+        <PlayerIdentity name={name} avatar={avatar} score={score} matchPoints={matchPoints} owner="opponent" speech={speech} cubeValue={cubeValue} />
         <div className={styles.cardBacks}>{Array.from({ length: count }, (_, index) => {
           const card = revealedCards[index];
           return card
@@ -1079,14 +1101,6 @@ function dealCardStyle(index: number, owner: 'self' | 'opponent'): CSSProperties
   } as CSSProperties;
 }
 
-const AVATAR_PALETTES = [
-  { background: '#315f55', skin: '#f0c5a0', hair: '#4b2d22' },
-  { background: '#584b78', skin: '#d99b73', hair: '#241b1a' },
-  { background: '#8a593c', skin: '#f3d0b1', hair: '#9b653d' },
-  { background: '#315a78', skin: '#b97854', hair: '#1f1715' },
-  { background: '#6b4a5f', skin: '#e7b58e', hair: '#5c3427' },
-] as const;
-
 function CubeFace({ value, label = `Würfel ${value}` }: { value: number; label?: string }) {
   const pips = value === 1 ? [[20, 20]] : value === 2 ? [[12, 12], [28, 28]] : value === 4 ? [[12, 12], [28, 12], [12, 28], [28, 28]] : [];
   return (
@@ -1098,11 +1112,11 @@ function CubeFace({ value, label = `Würfel ${value}` }: { value: number; label?
   );
 }
 
-function PlayerIdentity({ name, score, matchPoints, owner, speech = null, cubeValue }: { name: string; score: number; matchPoints: number; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null; cubeValue?: number }) {
+function PlayerIdentity({ name, avatar, score, matchPoints, owner, speech = null, cubeValue }: { name: string; avatar?: number | null; score: number; matchPoints: number; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null; cubeValue?: number }) {
   return (
     <div className={styles.playerIdentity} data-owner={owner}>
       {speech && <AvatarSpeechBubble speech={speech} />}
-      <PlayerAvatar name={name} />
+      <Avatar name={name} selection={avatar} className={styles.playerAvatar} />
       <span className={styles.avatarScore} aria-label={`${name}: ${score} Augen, ${matchPoints} Matchpunkte`}>
         <b title="Augen">{score}</b>
         <small title="Matchpunkte">{matchPoints}</small>
@@ -1113,36 +1127,6 @@ function PlayerIdentity({ name, score, matchPoints, owner, speech = null, cubeVa
       </div>
     </div>
   );
-}
-
-function PlayerAvatar({ name }: { name: string }) {
-  const hash = nameHash(name);
-  const palette = AVATAR_PALETTES[hash % AVATAR_PALETTES.length];
-  const hairStyle = (hash >>> 4) % 3;
-  return (
-    <svg className={styles.playerAvatar} viewBox="0 0 100 100" role="img" aria-label={`Avatar von ${name}`}>
-      <circle cx="50" cy="50" r="48" fill={palette.background} />
-      <circle cx="22" cy="55" r="7" fill={palette.skin} />
-      <circle cx="78" cy="55" r="7" fill={palette.skin} />
-      <ellipse cx="50" cy="54" rx="29" ry="34" fill={palette.skin} />
-      {hairStyle === 0 && <path d="M22 48C21 23 34 13 51 13c18 0 29 12 28 34-9-4-13-12-16-19-9 10-23 16-41 20Z" fill={palette.hair} />}
-      {hairStyle === 1 && <path d="M22 43c2-22 15-31 29-31 17 0 27 11 28 32-7-6-11-13-13-19-11 8-26 13-44 18Z" fill={palette.hair} />}
-      {hairStyle === 2 && <path d="M21 46c0-21 12-34 30-34 17 0 28 12 28 34l-9-14-7 5-8-10-9 9-8-8-8 13-9 5Z" fill={palette.hair} />}
-      <circle cx="39" cy="54" r="2.8" fill="#231b18" />
-      <circle cx="61" cy="54" r="2.8" fill="#231b18" />
-      <path d="M47 64c2 2 4 2 6 0" fill="none" stroke="#9c604f" strokeWidth="2" strokeLinecap="round" />
-      <path d="M40 73c6 5 14 5 20 0" fill="none" stroke="#713f39" strokeWidth="2.4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function nameHash(name: string): number {
-  let hash = 2166136261;
-  for (const character of name.trim().toLocaleLowerCase('de-AT')) {
-    hash ^= character.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
 }
 
 type AvatarSpeech = ChatMessage & {
@@ -1174,13 +1158,13 @@ function AvatarSpeechBubble({ speech }: { speech: AvatarSpeech }) {
       role="status"
       aria-live="polite"
     >
-      <strong>{speech.speechText ?? speech.text}</strong>
+      <strong>{formatSuitNames(speech.speechText ?? speech.text)}</strong>
       {speech.speech !== 'chat' && <span>{labels[speech.speech]}</span>}
     </div>
   );
 }
 
-function CurrentTrick({ trick, playerId, collecting = false }: { trick: Trick; playerId: PlayerID; collecting?: boolean }) {
+function CurrentTrick({ trick, playerId, collecting = false, celebrating = false }: { trick: Trick; playerId: PlayerID; collecting?: boolean; celebrating?: boolean }) {
   const respondingPlayer: PlayerID = trick.leadPlayer === '0' ? '1' : '0';
   const cards = ([trick.leadPlayer, respondingPlayer] as PlayerID[])
     .flatMap((id) => trick.cards[id] ? [{ id, card: trick.cards[id]! }] : []);
@@ -1201,7 +1185,7 @@ function CurrentTrick({ trick, playerId, collecting = false }: { trick: Trick; p
     trickElement.style.setProperty('--collect-trick-y', `${pileBounds.top + pileBounds.height / 2 - trickBounds.top - trickBounds.height / 2}px`);
   }, [collectTo, collecting]);
 
-  return <div ref={trickRef} className={styles.trick} data-collecting={collecting} data-collect-to={collectTo} aria-label="Aktueller Stich">{cards.length === 0 ? <span>Noch keine Karte im Stich</span> : cards.map(({ id, card }) => <div key={id}><CardView card={card} displayOnly /></div>)}</div>;
+  return <div ref={trickRef} className={styles.trick} data-collecting={collecting} data-celebrating={celebrating} data-collect-to={collectTo} aria-label="Aktueller Stich">{cards.length === 0 ? <span>Noch keine Karte im Stich</span> : cards.map(({ id, card }) => <div key={id}><CardView card={card} displayOnly /></div>)}</div>;
 }
 
 function TrickPile({ count, owner, onInspect, inspectedTrick = null }: { count: number; owner: 'self' | 'opponent'; onInspect?: () => void; inspectedTrick?: Trick | null }) {

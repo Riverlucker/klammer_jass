@@ -74,7 +74,7 @@
 .talon i:nth-child(1) { left: 0; top: 4px; transform: rotate(-2deg); }
 .talon i:nth-child(2) { left: 3px; top: 2px; transform: rotate(1deg); }
 .talon i:nth-child(3) { left: 6px; top: 0; transform: rotate(3deg); }
-.talon b { position: absolute; z-index: 4; right: -5px; bottom: -4px; display: grid; place-items: center; min-width: 27px; height: 27px; padding: 0 5px; border: 2px solid var(--felt-dark); border-radius: 999px; color: #1f190b; background: var(--gold); font-size: .72rem; }
+.talon b { position: absolute; z-index: 4; right: -3px; bottom: -3px; display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 3px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--felt-dark); font-size: .55rem; font-weight: 500; }
 .talonSlot { position: absolute; z-index: 2; left: 0; top: 0; }
 .originalCardSlot { position: absolute; z-index: 1; left: 86px; top: -30px; transform: rotate(8deg); transform-origin: center; }
 .statusCard { max-width: 620px; padding: 12px 18px; border: 1px solid var(--line); border-radius: 18px; background: rgba(6, 31, 24, .86); text-align: center; box-shadow: 0 16px 45px rgba(0,0,0,.2); }
@@ -123,7 +123,7 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 .preserveCardColor:disabled { filter: none !important; }
 .playableCard { z-index: 1; border-color: rgba(246,205,105,.85); box-shadow: 0 0 0 2px rgba(225,184,91,.3), 0 9px 24px rgba(0,0,0,.42), 0 0 18px rgba(225,184,91,.2); filter: brightness(1.08) saturate(1.08); transform: translateY(-5px); }
 .timeoutCard { z-index: 1; border: 3px solid transparent; background: linear-gradient(#fffaf0, #fffaf0) padding-box, conic-gradient(from -90deg, var(--gold) var(--timeout-progress), rgba(225,184,91,.13) 0) border-box; box-shadow: 0 0 0 2px rgba(225,184,91,.25), 0 0 18px rgba(225,184,91,.34); }
-.timeoutCard::after { content: 'AUTO'; position: absolute; top: 5px; left: 50%; transform: translateX(-50%); padding: 2px 4px; border-radius: 4px; color: #251b08; background: var(--gold); font-family: Arial, Helvetica, sans-serif; font-size: .48rem; font-weight: 900; letter-spacing: .04em; }
+.timeoutCard::after { content: 'AUTO'; position: absolute; bottom: 4px; left: 2px; padding: 1px 2px; border-radius: 3px; color: #251b08; background: var(--gold); font-family: Arial, Helvetica, sans-serif; font-size: .38rem; font-weight: 900; letter-spacing: 0; }
 .freshCard { z-index: 2; animation: insertExtraCard .7s cubic-bezier(.22, .8, .28, 1) both; }
 .turningExtraCard { z-index: 3; transform-origin: center; backface-visibility: hidden; animation: turnExtraCard .8s cubic-bezier(.22, .75, .28, 1) both; }
 .extraCardBack { border: 2px solid #d9c99e; background: repeating-linear-gradient(45deg, #8c292d 0 6px, #ede0bd 7px 10px, #17382f 11px 17px); box-shadow: 0 7px 17px rgba(0,0,0,.4), inset 0 0 0 4px rgba(237,224,189,.22); transform: translateY(-5px); animation: receiveExtraCard .4s ease-out both; }
@@ -152,6 +152,17 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 .inspectedTrick { position: absolute; right: 0; bottom: 0; display: flex; animation: meldFlip .25s ease-out; }
 .inspectedTrick > div { flex: 0 0 68px; width: 68px; height: 100px; }
 .inspectedTrick > div + div { margin-left: -18px; }
+.trickPile[data-owner='self'] .inspectedTrick { bottom: calc(100% + 14px); }
+.trickPile[data-owner='opponent'] .inspectedTrick { top: calc(100% + 14px); bottom: auto; }
+.trick[data-celebrating='true'] .card::after { content: ''; position: absolute; inset: -5px; border: 3px dashed #6ef4b1; border-radius: 12px; pointer-events: none; animation: winningCardDance .45s ease-in-out infinite alternate; }
+.trick[data-celebrating='true'] > div:nth-child(2) .card::after { animation-direction: alternate-reverse; }
+@keyframes winningCardDance { from { border-color: #6ef4b1; transform: rotate(-2deg); box-shadow: 0 0 9px #6ef4b180; } to { border-color: #ffe189; transform: rotate(2deg); box-shadow: 0 0 16px #ffe18980; } }
+.summaryAvatar { width: 70px; height: 70px; justify-self: center; }
+.matchFacts { text-align: left; margin: 24px 0; }
+.matchFacts > div { display: flex; justify-content: space-between; gap: 15px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.matchFacts dt { color: var(--muted); }
+.matchFacts dd { margin: 0; text-align: right; }
+.rulesDesktopButton { margin-left: 14px; padding: 4px 0; border: 0; color: var(--gold); background: transparent; cursor: pointer; font-size: .8rem; }
 @media (prefers-reduced-motion: reduce) { .inspectedTrick { animation: none; } }
 .chatPanel { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0; border: 1px solid var(--line); border-radius: 16px; background: rgba(4,24,18,.9); box-shadow: var(--shadow); overflow: hidden; }
 .chatPanel > header { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 15px 12px; border-bottom: 1px solid var(--line); }
@@ -186,6 +197,7 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 @keyframes revealSettlementCard { from { opacity: 0; scale: 0 1; } to { opacity: 1; scale: 1; } }
 .waiting, .matchEnd { width: min(660px, calc(100% - 24px)); margin: clamp(70px, 16vh, 170px) auto; padding: clamp(26px, 6vw, 52px); border: 1px solid var(--line); border-radius: 24px; background: var(--panel); box-shadow: var(--shadow); text-align: center; }
 .waiting h1, .matchEnd h1 { margin: 10px 0; font-size: clamp(2rem, 6vw, 4rem); line-height: 1; }
+.matchEnd { flex: 0 0 auto; margin: 32px auto; }
 .waiting > p:not(:first-child), .matchEnd > p:not(:first-child) { color: var(--muted); line-height: 1.6; }
 .pulse { display: inline-flex; align-items: center; gap: 8px; color: #bff5db; }
 .pulse::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 6px rgba(77,180,135,.13); }
@@ -347,16 +359,16 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
   .table[data-settlement='true'] .breakdown strong { font-size: 1.45rem; }
   .table[data-settlement='true'] .trickSettlement, .table[data-settlement='true'] .specialBreakdown { margin: 8px 0 10px; }
   .table[data-settlement='true'] .wonTricks { padding: 7px; }
-  .table[data-settlement='true'] .wonTrickGrid { grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px 3px; }
-  .table[data-settlement='true'] .wonTrickGrid article { min-width: 58px; min-height: 57px; padding-right: 5px; }
-  .table[data-settlement='true'] .compactCard { flex-basis: 34px; width: 34px; height: 51px; padding: 3px; }
-  .table[data-settlement='true'] .compactCard > b { font-size: .9rem; }
-  .table[data-settlement='true'] .compactCard > span { font-size: .48rem; }
-  .table[data-settlement='true'] .wonTrickGrid article .compactCard + .compactCard { margin-left: -13px; }
-  .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::before, .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::after { width: 34px; height: 51px; }
-  .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::before { left: calc(50% - 23px); }
-  .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::after { left: calc(50% - 12px); }
-  .table[data-settlement='true'] .wonTrickGrid article > span { right: 1px; width: 17px; height: 17px; font-size: .52rem; }
+  .table[data-settlement='true'] .wonTrickGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 2px; }
+  .table[data-settlement='true'] .wonTrickGrid article { min-width: 0; min-height: 40px; padding-right: 3px; }
+  .table[data-settlement='true'] .compactCard { flex-basis: 24px; width: 24px; height: 36px; padding: 2px; border-radius: 4px; }
+  .table[data-settlement='true'] .compactCard > b { font-size: .63rem; }
+  .table[data-settlement='true'] .compactCard > span { font-size: .34rem; }
+  .table[data-settlement='true'] .wonTrickGrid article .compactCard + .compactCard { margin-left: -9px; }
+  .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::before, .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::after { width: 24px; height: 36px; }
+  .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::before { left: calc(50% - 16px); }
+  .table[data-settlement='true'] .wonTrickGrid article[data-ready='true']::after { left: calc(50% - 8px); }
+  .table[data-settlement='true'] .wonTrickGrid article > span { right: 0; width: 12px; height: 12px; font-size: .4rem; border-width: 1px; }
   .table[data-settlement='true'] .scoreDetailList { padding: 8px; }
   .table[data-settlement='true'] .scoreDetailList dl { gap: 2px; }
 }
@@ -395,11 +407,12 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 /* Keep the playing surface inside the visible browser height, including mobile browser chrome. */
 @media (max-width: 1050px) {
   .page { width: calc(100% - 12px); min-height: 100dvh; padding: 16px 0 max(6px, env(safe-area-inset-bottom)); }
-  .header { position: relative; z-index: 20; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; height: 48px; padding: 3px 7px; border-radius: 12px; }
-  .mobileControls { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .header { position: relative; z-index: 20; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; height: 64px; padding: 3px 7px; border-radius: 12px; }
+  .mobileControls { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 5px; min-width: 0; }
   .mobileControls button, .panelClose { flex: 0 0 auto; min-width: 44px; min-height: 40px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: rgba(255,255,255,.06); font-size: .76rem; cursor: pointer; }
   .mobileControls button[aria-expanded='true'] { color: #17261e; background: var(--gold); }
-  .mobileControls > span { color: var(--muted); font-size: .65rem; line-height: 1.35; }
+  .mobileControls > span { flex-basis: 100%; color: var(--muted); font-size: .65rem; line-height: 1.35; }
+  .rulesDesktopButton { display: none; }
   .headerStatus { grid-column: 2; grid-row: 1; }
   .deadline { min-width: 0; padding: 7px; font-size: .65rem; }
   .headerDetails { display: none; }
@@ -431,7 +444,7 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
   .tableCardStack { width: 88px; height: 88px; }
   .talon { width: 56px; height: 84px; }
   .talon i { width: 54px; height: 81px; }
-  .talon b { min-width: 23px; height: 23px; font-size: .65rem; }
+  .talon b { min-width: 16px; height: 16px; font-size: .5rem; }
   .originalCardSlot { left: 58px; top: -17px; }
   .tableScene .card { flex-basis: 54px; width: 54px; height: 81px; padding: 4px; }
   /* Scale the face with the small table cards so both corner labels fit. */

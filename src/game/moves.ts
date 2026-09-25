@@ -171,6 +171,8 @@ export const endMatch: Move<JassState> = ({ G, events, playerID }) => {
     reason: 'player-ended',
   };
   G.matchResult = result;
+  G.nextGamePlayers = [];
+  G.resumePlayers = [];
   G.deadlineAt = null;
   events.endGame(result);
 };
@@ -178,6 +180,7 @@ export const endMatch: Move<JassState> = ({ G, events, playerID }) => {
 export const pauseMatch: Move<JassState> = ({ G }) => {
   if (!G.gameResult || G.matchResult || G.matchPaused) return INVALID_MOVE;
   G.matchPaused = true;
+  G.pauseReason = 'game-end';
   G.resumePlayers = [];
   G.nextGamePlayers = [];
   G.deadlineAt = null;
@@ -205,6 +208,8 @@ function startNextGame(G: JassState) {
   G.nextGamePlayers = [];
   G.readyPlayers = [];
   G.matchPaused = false;
+  G.pauseReason = null;
+  G.consecutiveTimeouts = { '0': 0, '1': 0 };
   G.resumePlayers = [];
   G.vorne = otherPlayer(G.dealer);
 }

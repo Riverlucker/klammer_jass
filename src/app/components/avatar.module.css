@@ -1,0 +1,10 @@
+.picker { min-width: 0; margin: 0 0 20px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.picker legend { color: var(--muted); font-size: .8rem; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; max-width: 320px; margin: auto; }
+.grid label { position: relative; display: grid; place-items: center; min-height: 44px; padding: 4px; border: 2px solid transparent; border-radius: 12px; cursor: pointer; }
+.grid label:has(input:checked) { border-color: var(--gold); background: rgba(225,184,91,.15); }
+.grid label:has(input:focus-visible) { outline: 3px solid var(--gold); outline-offset: 2px; }
+.grid input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.grid svg { width: min(100%, 56px); aspect-ratio: 1; }
+.picker button { display: block; margin: 10px auto 0; padding: 8px; border: 0; color: var(--gold); background: transparent; cursor: pointer; }
+.picker:disabled { opacity: .5; }

@@ -1,6 +1,12 @@
 import type { JassState, Trick } from './types';
 
-export const TRICK_DISPLAY_MILLISECONDS = 3_000;
+export const TRICK_DISPLAY_MILLISECONDS = 4_000;
+export const TRICK_COLLECTION_MILLISECONDS = 700;
+
+export function isTrickCelebrating(remainingMilliseconds: number): boolean {
+  return remainingMilliseconds <= TRICK_DISPLAY_MILLISECONDS - 1000
+    && remainingMilliseconds > TRICK_COLLECTION_MILLISECONDS + 1000;
+}
 
 export interface TrickPresentation {
   trick: Trick;

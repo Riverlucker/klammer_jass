@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMatchSchema, parseChatRequest, parseMoveRequest } from './apiSchemas';
+import { createMatchSchema, joinMatchSchema, parseChatRequest, parseMoveRequest } from './apiSchemas';
 
 const matchId = '230e9890-c224-4e3d-89ca-3dddae284c31';
 
@@ -51,6 +51,18 @@ describe('parseMoveRequest', () => {
 });
 
 describe('createMatchSchema', () => {
+  it('erlaubt genau die 16 Avatare oder den Standard beim Erstellen und Beitreten', () => {
+    const identity = { playerName: 'Anna', password: '' };
+    const settings = { targetScore: 301, stake: 1, handicap: 0, schneiderRule: 'yes', cubeEnabled: true, moveTimeSeconds: 10, cubeTimeSeconds: 30 };
+    for (const avatar of [undefined, null, ...Array.from({ length: 16 }, (_, index) => index)]) {
+      expect(createMatchSchema.safeParse({ ...settings, ...identity, avatar }).success).toBe(true);
+      expect(joinMatchSchema.safeParse({ ...identity, avatar }).success).toBe(true);
+    }
+    for (const avatar of [-1, 16, 1.5, '1']) {
+      expect(createMatchSchema.safeParse({ ...settings, ...identity, avatar }).success).toBe(false);
+      expect(joinMatchSchema.safeParse({ ...identity, avatar }).success).toBe(false);
+    }
+  });
   it('accepts all PDF match settings in their configured intervals', () => {
     const parsed = createMatchSchema.safeParse({
       targetScore: '701',

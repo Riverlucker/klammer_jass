@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
+import AvatarPicker from './components/AvatarPicker';
 
 export default function Home() {
   const router = useRouter();
@@ -20,6 +21,8 @@ export default function Home() {
   const [joinMatchId, setJoinMatchId] = useState('');
   const [joinPlayerName, setJoinPlayerName] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
+  const [createAvatar, setCreateAvatar] = useState<number | null>(null);
+  const [joinAvatar, setJoinAvatar] = useState<number | null>(null);
 
   async function handleCreateMatch(event: FormEvent) {
     event.preventDefault();
@@ -32,6 +35,7 @@ export default function Home() {
         body: JSON.stringify({
           playerName: createPlayerName,
           password: createPassword,
+          avatar: createAvatar,
           targetScore,
           stake,
           handicap,
@@ -62,7 +66,7 @@ export default function Home() {
       const response = await fetch(`/api/matches/${encodeURIComponent(matchId)}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: joinPlayerName, password: joinPassword }),
+        body: JSON.stringify({ playerName: joinPlayerName, password: joinPassword, avatar: joinAvatar }),
       });
       const data = await readResponse(response);
       if (!response.ok) throw new Error(data.error ?? 'Beitritt fehlgeschlagen.');
@@ -114,6 +118,7 @@ export default function Home() {
               <option value="1001">1001 Punkte</option>
             </select>
           </label>
+          <AvatarPicker name={createPlayerName} value={createAvatar} onChange={setCreateAvatar} disabled={isLoading} />
           <label className="field">
             <span>Einsatz pro Spiel</span>
             <input type="number" min="1" max="1000" step="1" value={stake} onChange={(event) => setStake(event.target.value)} />
@@ -180,6 +185,7 @@ export default function Home() {
               spellCheck={false}
             />
           </label>
+          <AvatarPicker name={joinPlayerName} value={joinAvatar} onChange={setJoinAvatar} disabled={isLoading} />
           <p className={styles.joinHint}>
             Ein Match hat genau zwei geschützte Plätze. Mit deinen Zugangsdaten kannst du deinen bestehenden Platz wieder öffnen.
           </p>

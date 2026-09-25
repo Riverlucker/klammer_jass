@@ -11,6 +11,9 @@ import { resolvePlayerID } from './auth';
 export async function loadGameRecord(database: Pick<Prisma.TransactionClient, 'game'>, id: string, token: string | undefined) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const record = await database.game.findUnique({ where: { id }, include: { match: true } });
+    if (record && isServerGameState(record.state) && record.state.G.matchStartedAt === undefined && record.match?.createdAt) {
+      record.state.G.matchStartedAt = record.match.createdAt.getTime();
+    }
     if (!record || !isServerGameState(record.state) || record.state.ctx.phase !== 'trumpExchange') return record;
     if (!record.match || !resolvePlayerID(record.match, token)) return record;
     const playerID = record.state.ctx.currentPlayer;
