@@ -8,6 +8,7 @@ import type {
 import { getPusherClient } from '@/lib/pusher';
 import { canRetryAfterTimerStart, GameClock, TickRequest } from './gameSync';
 import { TrickDisplay, type TrickPresentation } from '@/game/trickDisplay';
+import { RedealDisplay, type RedealPresentation } from '@/game/redeal';
 
 export type MoveName =
   | 'prepareCard'
@@ -64,8 +65,10 @@ export function useJassGame(matchId: string) {
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [serverRealtime, setServerRealtime] = useState(false);
   const [trickPresentation, setTrickPresentation] = useState<TrickPresentation | null>(null);
+  const [redealPresentation, setRedealPresentation] = useState<RedealPresentation | null>(null);
   const [animationNow, setAnimationNow] = useState(0);
   const trickDisplay = useRef(new TrickDisplay());
+  const redealDisplay = useRef(new RedealDisplay());
   const clock = useRef(new GameClock());
   const ticks = useRef(new TickRequest());
   const latestState = useRef<GameClientState | null>(null);
@@ -77,6 +80,7 @@ export function useJassGame(matchId: string) {
     latestState.current = data.state;
     const receivedAt = performance.now();
     setTrickPresentation(trickDisplay.current.receive(data.state.G, receivedAt));
+    setRedealPresentation(redealDisplay.current.receive(data.state.G, data.state.ctx.phase, receivedAt, clock.current.now()));
     setAnimationNow(receivedAt);
     setState(data.state);
     setPlayerId(data.playerId);
@@ -173,6 +177,7 @@ export function useJassGame(matchId: string) {
 
   const deadlineAt = state?.G.deadlineAt ?? null;
   const trickDisplayMilliseconds = trickPresentation ? Math.max(0, trickPresentation.until - animationNow) : 0;
+  const redealMilliseconds = redealPresentation ? Math.max(0, redealPresentation.until - animationNow) : 0;
   const extraDealStartedAt = state?.G.extraDealStartedAt ?? null;
   const extraDealUntil = state?.G.extraDealUntil ?? null;
   useEffect(() => {
@@ -183,7 +188,7 @@ export function useJassGame(matchId: string) {
   const decisionTimer = state?.G.decisionTimer;
   const readyDecisionID = !loading && !isSending && playerId && decisionTimer && !decisionTimer.started
     && decisionTimer.waitingFor.includes(playerId)
-    && trickDisplayMilliseconds <= 0 && (extraDealUntil ?? 0) <= now
+    && trickDisplayMilliseconds <= 0 && redealMilliseconds <= 0 && (extraDealUntil ?? 0) <= now
     ? decisionTimer.id : null;
   useEffect(() => {
     if (readyDecisionID === null || document.visibilityState !== 'visible') return;
@@ -271,6 +276,7 @@ export function useJassGame(matchId: string) {
   const decisionClockStart = Math.max(
     now,
     now + trickDisplayMilliseconds,
+    now + redealMilliseconds,
     extraDealMilliseconds > 0 ? extraDealUntil! : now,
   );
   const decisionMilliseconds = deadlineAt === null ? null
@@ -292,6 +298,8 @@ export function useJassGame(matchId: string) {
     inspectingLastTrick: Boolean(trickPresentation?.inspecting),
     extraDealMilliseconds,
     extraDealElapsedMilliseconds,
+    redealMilliseconds,
+    redealElapsedMilliseconds: redealPresentation ? Math.max(0, animationNow - redealPresentation.startedAt) : 0,
     now,
     clearError: () => setError(null),
     dispatchMove,

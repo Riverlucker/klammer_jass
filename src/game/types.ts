@@ -134,7 +134,6 @@ export interface JassState {
     from: PlayerID;
     resumePlayer: PlayerID;
   } | null;
-  afterMoveDoubleBy: PlayerID | null;
   smallGameAnnounced: boolean;
   smallGameAccepted: boolean;
   trumpSevenDecisions: PlayerID[];
@@ -152,6 +151,8 @@ export interface JassState {
   inspectingLastTrick?: boolean;
   extraDealStartedAt: number | null;
   extraDealUntil: number | null;
+  redealStartedAt?: number | null;
+  redealUntil?: number | null;
   deadlineAt: number | null;
   decisionTimer?: { id: number; waitingFor: PlayerID[]; started: boolean } | null;
   nextGamePlayers: PlayerID[];

@@ -63,7 +63,6 @@ export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> 
       matchResult: null,
       cube: { value: 1, holder: null },
       cubeOffer: null,
-      afterMoveDoubleBy: null,
       smallGameAnnounced: false,
       smallGameAccepted: false,
       trumpSevenDecisions: [],
@@ -79,6 +78,8 @@ export const JassGame: Game<JassState, Record<string, unknown>, MatchSetupData> 
       trickDisplayUntil: null,
       extraDealStartedAt: null,
       extraDealUntil: null,
+      redealStartedAt: null,
+      redealUntil: null,
       deadlineAt: null,
       nextGamePlayers: [],
       matchPaused: false,
@@ -175,7 +176,6 @@ export function resetHandState(G: JassState) {
   G.handScoreDetails = emptyScoreDetails();
   G.lastHandResult = null;
   G.cubeOffer = null;
-  G.afterMoveDoubleBy = null;
   G.smallGameAnnounced = false;
   G.smallGameAccepted = false;
   G.trumpSevenDecisions = [];
@@ -191,6 +191,8 @@ export function resetHandState(G: JassState) {
   G.trickDisplayUntil = null;
   G.extraDealStartedAt = null;
   G.extraDealUntil = null;
+  G.redealStartedAt = null;
+  G.redealUntil = null;
   G.deadlineAt = null;
   G.meldAnnouncement = null;
 }

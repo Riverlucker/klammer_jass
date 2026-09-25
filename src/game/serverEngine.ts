@@ -9,6 +9,7 @@ import type { JassState, MeldType, PlayerID, ServerGameState } from './types';
 import { isPlayerID, otherPlayer } from './types';
 import { findBella, getBestSequenceMeld, isCard, isMoveLegal } from './validation';
 import { TRICK_DISPLAY_MILLISECONDS } from './trickDisplay';
+import { REDEAL_DISPLAY_MILLISECONDS } from './redeal';
 
 export interface EngineAction {
   move: string;
@@ -81,32 +82,16 @@ export function reduceGameMove(
     nextState.G.extraDealStartedAt = null;
     nextState.G.extraDealUntil = null;
   }
+  if (nextState.G.gameNumber === state.G.gameNumber && nextState.G.handNumber === state.G.handNumber
+    && nextState.G.redealCount > state.G.redealCount) {
+    nextState.G.redealStartedAt = now;
+    nextState.G.redealUntil = now + REDEAL_DISPLAY_MILLISECONDS;
+  } else if ((nextState.G.redealUntil ?? 0) <= now) {
+    nextState.G.redealStartedAt = null;
+    nextState.G.redealUntil = null;
+  }
   appendDealerComments(state, nextState, action, now);
   return { state: nextState, errorType: null };
-}
-
-export function offerCubeAfterMove(
-  state: ServerGameState,
-  playerID: PlayerID,
-): ServerGameState | null {
-  const { G, ctx } = state;
-  const allowed =
-    (ctx.phase === 'trumpSelection' || ctx.phase === 'playing') &&
-    ctx.currentPlayer !== playerID &&
-    G.afterMoveDoubleBy === playerID &&
-    G.settings.cubeEnabled &&
-    !G.cubeOffer &&
-    !G.gameResult &&
-    (G.cube.holder === null || G.cube.holder === playerID) &&
-    isPlayerID(ctx.currentPlayer);
-  if (!allowed) return null;
-
-  const nextState = structuredClone(state);
-  nextState.G.cubeOffer = { from: playerID, resumePlayer: ctx.currentPlayer as PlayerID };
-  nextState.G.afterMoveDoubleBy = null;
-  nextState._stateID += 1;
-  appendDealerComments(state, nextState, { move: 'doubleCube', args: [], playerID });
-  return nextState;
 }
 
 export function stampDeadline(
@@ -124,7 +109,7 @@ export function stampDeadline(
   }
   G.timeoutCard = selectTimeoutCard(nextState, random);
   const seconds = G.cubeOffer ? G.settings.cubeTimeSeconds : G.settings.moveTimeSeconds;
-  const displayUntil = Math.max(G.trickDisplayUntil ?? now, G.extraDealUntil ?? now);
+  const displayUntil = Math.max(G.trickDisplayUntil ?? now, G.extraDealUntil ?? now, G.redealUntil ?? now);
   const displayDelay = Math.max(0, displayUntil - now);
   G.deadlineAt = now + displayDelay + seconds * 1000;
   return nextState;
@@ -140,6 +125,10 @@ export function isTrickBeingDisplayed(state: ServerGameState, now = Date.now()):
 
 export function isExtraDealBeingDisplayed(state: ServerGameState, now = Date.now()): boolean {
   return state.G.extraDealUntil !== null && state.G.extraDealUntil > now;
+}
+
+export function isRedealBeingDisplayed(state: ServerGameState, now = Date.now()): boolean {
+  return (state.G.redealUntil ?? 0) > now;
 }
 
 export function timeoutAction(state: ServerGameState): EngineAction | null {

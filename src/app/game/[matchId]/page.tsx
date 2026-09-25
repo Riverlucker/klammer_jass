@@ -7,7 +7,9 @@ import { NON_TRUMP_ORDER, RANKS, SUITS, TRUMP_ORDER, type Card, type Suit } from
 import { groupChatMessages } from '@/game/chatGroups';
 import { revealedMeldCards } from '@/game/meldReveal';
 import { extraCardPhase } from '@/game/extraDeal';
+import { REDEAL_REVEAL_AT_MILLISECONDS } from '@/game/redeal';
 import { canExchangeTrumpSeven } from '@/game/trumpSeven';
+import { canDouble as canPlayerDouble } from '@/game/cube';
 import {
   otherPlayer,
   type MeldDecision,
@@ -64,6 +66,8 @@ function GameTable({ matchId }: { matchId: string }) {
     inspectingLastTrick,
     extraDealMilliseconds,
     extraDealElapsedMilliseconds,
+    redealMilliseconds,
+    redealElapsedMilliseconds,
     now,
     clearError,
     dispatchMove: sendMove,
@@ -114,6 +118,7 @@ function GameTable({ matchId }: { matchId: string }) {
   const { G, ctx } = state;
   const opponentId: PlayerID = playerId === '0' ? '1' : '0';
   const fullHand = G.hands[playerId];
+  const redealActive = redealMilliseconds > 0;
   const extraDealActive = extraDealMilliseconds > 0 && extraDealElapsedMilliseconds !== null;
   const extraDealCards = extraDealActive ? fullHand.slice(-3) : [];
   const extraElapsed = extraDealElapsedMilliseconds ?? 0;
@@ -135,8 +140,8 @@ function GameTable({ matchId }: { matchId: string }) {
   const presentedWinner = presentedTrick?.winner ?? null;
   const collectingTrick = trickDisplayMilliseconds > 0 && trickDisplayMilliseconds <= 700;
   const settlementVisible = !presentedTrick && (ctx.phase === 'endOfHand' || ctx.phase === 'endOfGame');
-  const canDouble = trickDisplayMilliseconds <= 0 && !extraDealActive && canPlayerDouble(G, ctx.phase ?? null, ctx.currentPlayer, playerId);
-  const cardsBlocked = canRobNow || trickDisplayMilliseconds > 0 || extraDealActive || cardPlayBlocked(G, playerId);
+  const canDouble = trickDisplayMilliseconds <= 0 && !extraDealActive && !redealActive && canPlayerDouble(G, ctx.phase ?? null, ctx.currentPlayer, playerId);
+  const cardsBlocked = canRobNow || trickDisplayMilliseconds > 0 || extraDealActive || redealActive || cardPlayBlocked(G, playerId);
   const myVisibleTricks = Math.max(0, trickCount(G.pastTricks, playerId) - (presentedWinner === playerId ? 1 : 0));
   const opponentVisibleTricks = Math.max(0, trickCount(G.pastTricks, opponentId) - (presentedWinner === opponentId ? 1 : 0));
   const canInspectLastTrick = ctx.phase === 'playing' && trickDisplayMilliseconds <= 0 && !extraDealActive
@@ -239,7 +244,7 @@ function GameTable({ matchId }: { matchId: string }) {
           </div>
         </div>
         <div className={styles.headerStatus}>
-          <Deadline seconds={remainingSeconds} cube={Boolean(G.cubeOffer)} trickDisplayMilliseconds={trickDisplayMilliseconds} extraDealMilliseconds={extraDealMilliseconds} />
+          <Deadline seconds={remainingSeconds} cube={Boolean(G.cubeOffer)} trickDisplayMilliseconds={trickDisplayMilliseconds} extraDealMilliseconds={extraDealMilliseconds} redealMilliseconds={redealMilliseconds} />
         </div>
       </header>
 
@@ -265,6 +270,7 @@ function GameTable({ matchId }: { matchId: string }) {
           <OpponentArea
             name={gamePlayerName(G, opponentId)}
             score={G.scores[opponentId]}
+            dealing={redealActive}
             count={G.handCounts[opponentId]}
             revealedCards={revealedMeldCards(G, opponentId, now)}
             tricks={opponentVisibleTricks}
@@ -280,6 +286,8 @@ function GameTable({ matchId }: { matchId: string }) {
                   card={G.revealedCard}
                   talonCount={G.talonCount}
                   tucked={G.contract === 'small'}
+                  dealing={redealActive}
+                  revealOriginal={!redealActive || redealElapsedMilliseconds >= REDEAL_REVEAL_AT_MILLISECONDS}
                 />
               )}
               <div className={styles.trickSlot}>
@@ -298,12 +306,14 @@ function GameTable({ matchId }: { matchId: string }) {
             {canDouble && !G.cubeOffer && (
               <div className={styles.playerActions}>
                 <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>
-                  {G.afterMoveDoubleBy === playerId && !myTurn ? 'Nach dem Zug drehen' : 'Vor dem Zug drehen'}
+                  Drehen
                 </button>
               </div>
             )}
             <div className={styles.playerActionField}>
-            {extraDealActive ? (
+            {redealActive ? (
+              <StatusCard title="Es wird neu gegeben" detail="Neue Karten werden verteilt. Danach beginnt die Trumpfwahl." />
+            ) : extraDealActive ? (
               <StatusCard
                 title="Drei neue Karten"
                 detail={allExtraCardsInserted
@@ -331,7 +341,10 @@ function GameTable({ matchId }: { matchId: string }) {
             <div className={styles.playerCardsRow}>
               <PlayerIdentity name={gamePlayerName(G, playerId)} score={G.scores[playerId]} owner="self" speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
               <div className={styles.hand} style={{ '--hand-gaps': Math.max(1, fullHand.length - 1) } as CSSProperties}>
-                {hand.map((card) => {
+                {hand.map((card, index) => {
+                  if (redealActive) return (
+                    <div key={`${card.suit}-${card.rank}`} className={`${styles.card} ${styles.dealingCard} ${styles.dealtCardBack}`} style={dealCardStyle(index, 'self')} aria-label={`Karte ${index + 1} wird ausgeteilt`} />
+                  );
                   const leadCard = G.currentTrick.cards[G.currentTrick.leadPlayer];
                   const legal = ctx.phase === 'playing' && Boolean(G.trump) && isMoveLegal(
                     card,
@@ -383,7 +396,7 @@ function GameTable({ matchId }: { matchId: string }) {
       )}
 
       {canRobNow && !extraDealActive && trickDisplayMilliseconds <= 0 && G.revealedCard && (
-        <TrumpSevenExchange card={G.revealedCard} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} error={error} />
+        <TrumpSevenExchange card={G.revealedCard} isSending={isSending} dispatchMove={dispatchMove} deadline={deadline} error={error} canDouble={canDouble} />
       )}
 
       {pendingCard && G.trump && !canRobNow && (
@@ -403,6 +416,7 @@ function GameTable({ matchId }: { matchId: string }) {
             <div className="button-row">
               <button className="button button-primary" type="button" disabled={isSending} onClick={() => void confirmCard()}>Karte legen</button>
               <button className="button" type="button" disabled={isSending} onClick={() => { void dispatchMove('prepareCard').then((saved) => { if (saved) setPendingSelection(null); }); }}>Abbrechen</button>
+              {canDouble && <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>Drehen</button>}
             </div>
           </section>
         </div>
@@ -571,12 +585,13 @@ function MeldExchange({ G, playerId, myTurn, isSending, dispatchMove, deadline }
   );
 }
 
-function TrumpSevenExchange({ card, isSending, dispatchMove, deadline, error }: {
+function TrumpSevenExchange({ card, isSending, dispatchMove, deadline, error, canDouble }: {
   card: Card;
   isSending: boolean;
   dispatchMove: DispatchMove;
   deadline: DeadlineInfo;
   error: string | null;
+  canDouble: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useLayoutEffect(() => {
@@ -599,6 +614,7 @@ function TrumpSevenExchange({ card, isSending, dispatchMove, deadline, error }: 
       <div className="button-row">
         <button className="button button-primary" type="button" disabled={isSending} onClick={() => void dispatchMove('exchangeTrumpSeven')}>Räubern</button>
         <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('keepTrumpSeven')}>Nicht räubern</button>
+        {canDouble && <button className="button" type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>Drehen</button>}
       </div>
       <TimeoutNotice deadline={deadline}>Bei 0 wird nicht geräubert und die normale Standardaktion ausgeführt.</TimeoutNotice>
       {error && <p role="alert">{error}</p>}
@@ -774,7 +790,7 @@ function StatusCard({ title, detail, children }: { title: string; detail: string
   return <div className={styles.statusCard}><p className="eyebrow">Am Tisch</p><h2>{title}</h2><p>{detail}</p>{children && <div className="button-row">{children}</div>}</div>;
 }
 
-function TalonAndOriginal({ card, talonCount, tucked }: { card: Card | null; talonCount: number; tucked: boolean }) {
+function TalonAndOriginal({ card, talonCount, tucked, dealing = false, revealOriginal = true }: { card: Card | null; talonCount: number; tucked: boolean; dealing?: boolean; revealOriginal?: boolean }) {
   if (!card) return null;
   const stackSize = Math.min(3, Math.max(1, talonCount));
   return (
@@ -793,7 +809,8 @@ function TalonAndOriginal({ card, talonCount, tucked }: { card: Card | null; tal
           </div>
         </div>
         <div className={`${styles.tableCardSlot} ${styles.originalCardSlot}`}>
-          <CardView card={card} displayOnly />
+          {revealOriginal ? <CardView card={card} displayOnly extraReveal={dealing} />
+            : <div className={`${styles.card} ${styles.dealtCardBack}`} aria-label="Offene Karte wird gleich aufgedeckt" />}
         </div>
       </div>
     </aside>
@@ -900,7 +917,10 @@ function ScoreBoard({ G }: { G: PlayerJassState }) {
   );
 }
 
-function Deadline({ seconds, cube, trickDisplayMilliseconds, extraDealMilliseconds }: { seconds: number | null; cube: boolean; trickDisplayMilliseconds: number; extraDealMilliseconds: number }) {
+function Deadline({ seconds, cube, trickDisplayMilliseconds, extraDealMilliseconds, redealMilliseconds }: { seconds: number | null; cube: boolean; trickDisplayMilliseconds: number; extraDealMilliseconds: number; redealMilliseconds: number }) {
+  if (redealMilliseconds > 0) {
+    return <div className={styles.deadline}>Geben · {Math.ceil(redealMilliseconds / 1000)}s</div>;
+  }
   if (extraDealMilliseconds > 0) {
     return <div className={styles.deadline}>Karten · {Math.ceil(extraDealMilliseconds / 1000)}s</div>;
   }
@@ -1025,7 +1045,7 @@ function TimeoutNotice({ deadline, children }: { deadline: DeadlineInfo; childre
   );
 }
 
-function OpponentArea({ name, score, count, tricks, speech, revealedCards, inspectedTrick, onInspect }: { name: string; score: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void }) {
+function OpponentArea({ name, score, count, tricks, speech, revealedCards, inspectedTrick, onInspect, dealing }: { name: string; score: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void; dealing: boolean }) {
   return (
     <section className={styles.opponent}>
       <div className={styles.opponentCardsRow}>
@@ -1034,12 +1054,19 @@ function OpponentArea({ name, score, count, tricks, speech, revealedCards, inspe
           const card = revealedCards[index];
           return card
             ? <div className={styles.meldRevealedCard} key={`${card.suit}-${card.rank}`}><CardView card={card} displayOnly compact /></div>
-            : <div className={styles.cardBack} key={index} />;
+            : <div className={`${styles.cardBack} ${dealing ? styles.dealingCard : ''}`} key={index} style={dealing ? dealCardStyle(index, 'opponent') : undefined} />;
         })}</div>
       </div>
       <TrickPile count={tricks} owner="opponent" inspectedTrick={inspectedTrick} onInspect={onInspect} />
     </section>
   );
+}
+
+function dealCardStyle(index: number, owner: 'self' | 'opponent'): CSSProperties {
+  return {
+    '--deal-delay': `${index * 320 + (owner === 'self' ? 310 : 150)}ms`,
+    '--deal-from-y': owner === 'self' ? '-110px' : '110px',
+  } as CSSProperties;
 }
 
 const AVATAR_PALETTES = [
@@ -1272,17 +1299,6 @@ function CardView({ card, onClick, disabled = false, displayOnly = false, compac
 
 function CenteredState({ title, detail, action = false }: { title: string; detail: string; action?: boolean }) {
   return <main className={styles.centered}><section className="panel"><p className="eyebrow">Klammer Jass</p><h1>{title}</h1><p>{detail}</p>{action && <Link className="button button-primary" href="/">Zur Startseite</Link>}</section></main>;
-}
-
-function canPlayerDouble(G: PlayerJassState, phase: string | null, currentPlayer: string, playerId: PlayerID): boolean {
-  return Boolean(
-    (phase === 'trumpSelection' || phase === 'playing') &&
-      G.settings.cubeEnabled &&
-      !G.cubeOffer &&
-      !G.gameResult &&
-      (currentPlayer === playerId || G.afterMoveDoubleBy === playerId) &&
-      (G.cube.holder === null || G.cube.holder === playerId),
-  );
 }
 
 function cardPlayBlocked(G: PlayerJassState, playerId: PlayerID): boolean {

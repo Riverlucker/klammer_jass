@@ -68,12 +68,15 @@ Verbindliche Projektreferenz ist `Klammer Jass.pdf` im Projektverzeichnis. Die A
 - Bei Falte erhält der Trumpfmacher bei weniger oder gleich vielen Handaugen keine Augen; der Gegner erhält die gesamten Handaugen.
 - Erreichen beide Spieler gleichzeitig das Ziel, gewinnt der höhere Spielstand. Ein identischer Spielstand ist ein Unentschieden ohne Matchpunkte.
 - Der Würfel bewertet ausschließlich das abgeschlossene Spiel. Ein abgelehnter Dreher gibt dem anbietenden Spieler den bisherigen Würfelwert, anschließend kann das Match mit einem neuen Spiel fortgesetzt werden.
+- „Drehen“ ist nur während des eigenen Zuges möglich, auch während der Trumpfwahl, vor dem Bedienen und nach einer Meldungsantwort. Nach der Annahme setzt der Anbieter seinen Zug fort. Die bisherige Sonderberechtigung nach einer Zugübergabe entfällt; die Würfelbesitz-Regel gilt weiterhin.
+- Nach einer Spielpause startet „Match fortsetzen“ direkt das nächste Spiel, sobald beide Spieler bestätigt haben. Eine zweite Bestätigung über die alte Abrechnung ist nicht nötig.
 - Schneider liegt vor, wenn der Verlierer weniger als die aufgerundete Hälfte der Zielpunktzahl hat. „Ja“ verdoppelt die gewonnenen Matchpunkte immer, „Nur wenn gedreht“ nur bei einem Würfelwert größer als eins, „Nein“ nie.
 - Ein positiver Vorsprung wird dem Gast, ein negativer dem Host zu Beginn jedes Spiels gutgeschrieben.
 - Bella wird beim Ausspielen der ersten passenden Trumpf-König-/Dame-Karte standardmäßig ausgewählt, kann aber bewusst abgewählt werden.
 - Nach vier abgelehnten Trumpfentscheidungen wechselt der Dealer. Nach einer gespielten Hand erhält der Spieler mit den höheren Rohaugen den Button; bei Gleichstand bleibt er liegen.
 - Zug- und Würfelfristen werden auf dem Server geprüft. Trumpf-Timeouts wählen „Nein“ beziehungsweise „OK“, Karten-Timeouts eine zufällige gültige Karte und Würfel-Timeouts „Ablehnen“.
 - Online beginnt die volle Entscheidungsfrist nach der Anzeigebestätigung des zuständigen Browsers (nach Karten-/Stichanimationen). Bestätigungen sind pro Entscheidung einmalig. Ohne Bestätigung greift nach 15 Sekunden zusätzlicher Wartezeit die ursprüngliche Frist. Beide geöffneten Spielseiten prüfen abgelaufene Fristen erneut und können den Standardzug auslösen; ohne geöffneten Client erfolgt die Prüfung beim nächsten Zugriff über `tick` oder `move`. Die Anzeige verwendet die Serverzeit unabhängig von der Geräteuhr.
+- Wenn beide Spieler durchpassen, zeigt jeder Browser 3,5 Sekunden lang das Neugeben: Die sechs Karten werden verdeckt ausgeteilt und die neue offene Karte anschließend aufgedeckt. Die Trumpfwahl und ihre volle Zugfrist beginnen erst danach.
 
 ## Datenfluss und Sicherheit
 

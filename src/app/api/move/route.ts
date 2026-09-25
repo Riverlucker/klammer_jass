@@ -7,8 +7,8 @@ import { armDecisionTimer } from '@/game/decisionTimer';
 import {
   isDeadlineExpired,
   isExtraDealBeingDisplayed,
+  isRedealBeingDisplayed,
   isTrickBeingDisplayed,
-  offerCubeAfterMove,
   reduceGameMove,
   timeoutAction,
 } from '@/game/serverEngine';
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       }
 
       const trickBlocked = isTrickBeingDisplayed(currentState);
-      const extraDealBlocked = isExtraDealBeingDisplayed(currentState);
+      const extraDealBlocked = isExtraDealBeingDisplayed(currentState) || isRedealBeingDisplayed(currentState);
       if (trickBlocked || extraDealBlocked) {
         return {
           playerId,
@@ -71,12 +71,7 @@ export async function POST(request: NextRequest) {
         throw new MoveRequestError(409, 'Der Spielstand hat sich bereits geändert.');
       }
 
-      const afterMoveCube = move === 'doubleCube'
-        ? offerCubeAfterMove(currentState, playerId)
-        : null;
-      const reduced = afterMoveCube
-        ? { state: afterMoveCube, errorType: null }
-        : reduceGameMove(currentState, { move, args, playerID: playerId });
+      const reduced = reduceGameMove(currentState, { move, args, playerID: playerId });
       if (!reduced.state) throw new MoveRequestError(422, translateMoveError(reduced.errorType));
       const nextState = move === 'inspectLastTrick' || move === 'prepareCard' || move === 'keepTrumpSeven'
         ? reduced.state : armDecisionTimer(reduced.state);
@@ -96,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
     if (result.trickBlocked) {
       return NextResponse.json(
-        { error: result.extraDealBlocked ? 'Die drei Zusatzkarten werden noch aufgedeckt.' : 'Der Stich wird noch drei Sekunden lang angezeigt.', ...result, serverTime: Date.now() },
+        { error: result.extraDealBlocked ? 'Die Karten werden noch ausgeteilt.' : 'Der Stich wird noch drei Sekunden lang angezeigt.', ...result, serverTime: Date.now() },
         { status: 409 },
       );
     }

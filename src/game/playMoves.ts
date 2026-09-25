@@ -1,7 +1,6 @@
 import type { Move } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
 import { NON_TRUMP_VALUES, TRUMP_VALUES, type Card, type Suit } from './constants';
-import { allowAfterMoveDouble } from './moves';
 import { isGoodMeldReply, type GoodMeldReply } from './meldReplies';
 import { settlePlayedHand } from './scoring';
 import type {
@@ -89,7 +88,6 @@ export const playCard: Move<JassState> = (
   }
 
   if (Object.keys(G.currentTrick.cards).length < 2) {
-    allowAfterMoveDouble(G, playerID);
     events.endTurn();
     return;
   }
@@ -132,12 +130,10 @@ export const playCard: Move<JassState> = (
   G.currentTrick = { leadPlayer: winner, cards: {}, winner: null };
 
   if (G.hands['0'].length > 0 || G.hands['1'].length > 0) {
-    allowAfterMoveDouble(G, playerID);
     events.endTurn({ next: meldNamingRequired ? G.vorne : winner });
     return;
   }
 
-  G.afterMoveDoubleBy = null;
   G.handScores[winner] += 10;
   G.handScoreDetails[winner].lastTrick += 10;
   const settlement = settlePlayedHand({
@@ -188,7 +184,6 @@ export const respondMeld: Move<JassState> = (
   G.meldContest.response = response;
   G.meldContest.replyComment = response === 'good' ? replyComment! : null;
   G.meldContest.stage = 'dealerPlay';
-  allowAfterMoveDouble(G, playerID);
 };
 
 export const nameMeld: Move<JassState> = ({ G, ctx, events, playerID }) => {
@@ -205,7 +200,6 @@ export const nameMeld: Move<JassState> = ({ G, ctx, events, playerID }) => {
   if (!best?.highestCard) return INVALID_MOVE;
   G.meldContest.namedRank = best.highestCard.rank;
   G.meldContest.stage = 'awaitingDealerDecision';
-  allowAfterMoveDouble(G, playerID);
   events.endTurn({ next: G.dealer });
 };
 
@@ -234,7 +228,6 @@ export const resolveMeldContest: Move<JassState> = (
   if (decision !== expected) return INVALID_MOVE;
   awardAllSequences(G, decision === 'show' ? G.dealer : G.vorne);
   G.meldContest = null;
-  allowAfterMoveDouble(G, playerID);
   events.endTurn({ next: G.currentTrick.leadPlayer });
 };
 

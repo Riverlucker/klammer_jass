@@ -5,13 +5,13 @@ import { createClientState } from './playerView';
 import {
   isDeadlineExpired,
   isExtraDealBeingDisplayed,
-  offerCubeAfterMove,
   reduceGameMove,
   stampDeadline,
   timeoutAction,
 } from './serverEngine';
 import type { PlayerID, ServerGameState } from './types';
-import { isPlayerID } from './types';
+import { isPlayerID, otherPlayer } from './types';
+import { canDouble } from './cube';
 
 function readyState(): ServerGameState {
   let state = InitializeGame({ game: JassGame, numPlayers: 2 }) as ServerGameState;
@@ -172,17 +172,19 @@ describe('Serverseitige Zugzeiten', () => {
     expect(stamped.G.deadlineAt).toBe(stamped.G.trickDisplayUntil! + stamped.G.settings.moveTimeSeconds * 1000);
   });
 
-  it('erlaubt dem letzten Akteur einen Dreher nach seinem Zug', () => {
+  it('verbietet Drehen nach der Zugübergabe, auch mit einer alten gespeicherten Berechtigung', () => {
     let state = readyState();
     const actor = current(state);
     state = apply(state, 'decline', actor);
 
-    const offered = offerCubeAfterMove(state, actor);
-    expect(offered?.G.cubeOffer).toEqual({ from: actor, resumePlayer: current(state) });
-    expect(offered?._stateID).toBe(state._stateID + 1);
+    const legacy = { ...state, G: { ...state.G, afterMoveDoubleBy: actor } };
+    expect(canDouble(legacy.G, legacy.ctx.phase, current(legacy), actor)).toBe(false);
+    expect(reduceGameMove(legacy, { move: 'doubleCube', playerID: actor, args: [] }).state).toBeNull();
+    expect(canDouble(state.G, state.ctx.phase, current(state), current(state))).toBe(true);
+    expect(apply(state, 'doubleCube', current(state)).G.cubeOffer?.from).toBe(current(state));
   });
 
-  it('pausiert ein unbeantwortetes Spielende und verlangt zwei Fortsetzungen', () => {
+  it.each(['0', '1'] as const)('startet nach zwei Fortsetzungen direkt neu, wenn %s zuerst bestätigt', (first) => {
     let state = readyState();
     const offeringPlayer = current(state);
     state = apply(state, 'doubleCube', offeringPlayer);
@@ -192,10 +194,27 @@ describe('Serverseitige Zugzeiten', () => {
     expect(timeoutAction(state)).toEqual({ move: 'pauseMatch', args: [], playerID: '0' });
     state = apply(state, 'pauseMatch', '0');
     expect(state.G.matchPaused).toBe(true);
-    state = apply(state, 'resumeMatch', '0');
+    const gameNumber = state.G.gameNumber;
+    const matchPoints = { ...state.G.matchPoints };
+    state = apply(state, 'resumeMatch', first);
     expect(state.G.matchPaused).toBe(true);
-    state = apply(state, 'resumeMatch', '1');
+    expect(state.ctx.phase).toBe('endOfGame');
+    state = apply(state, 'resumeMatch', first);
+    expect(state.G.resumePlayers).toEqual([first]);
+    state = apply(state, 'resumeMatch', otherPlayer(first));
     expect(state.G.matchPaused).toBe(false);
+    expect(state.ctx.phase).toBe('trumpSelection');
+    expect(state.G.gameNumber).toBe(gameNumber + 1);
+    expect(state.G.handNumber).toBe(1);
+    expect(state.G.gameResult).toBeNull();
+    expect(state.G.lastHandResult).toBeNull();
+    expect(state.G.matchPoints).toEqual(matchPoints);
+    expect(state.G.cube).toEqual({ value: 1, holder: null });
+    expect(state.G.resumePlayers).toEqual([]);
+    expect(state.G.nextGamePlayers).toEqual([]);
+    expect(state.G.hands['0']).toHaveLength(6);
+    expect(state.G.hands['1']).toHaveLength(6);
+    expect(state.G.chatMessages.at(-1)?.text).toMatch(/liegt offen\.$/);
   });
 
   it.each(['0', '1'] as const)('lässt Spieler %s das pausierte Match endgültig verlassen', (playerID) => {

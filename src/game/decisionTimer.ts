@@ -1,4 +1,4 @@
-import { isDeadlineExpired, isExtraDealBeingDisplayed, isTrickBeingDisplayed, stampDeadline, timeoutAction } from './serverEngine';
+import { isDeadlineExpired, isExtraDealBeingDisplayed, isRedealBeingDisplayed, isTrickBeingDisplayed, stampDeadline, timeoutAction } from './serverEngine';
 import type { PlayerID, ServerGameState } from './types';
 
 // A disconnected player must not hold the table indefinitely while we await display confirmation.
@@ -29,7 +29,7 @@ export function acknowledgeDecision(
   const timer = state.G.decisionTimer;
   if (!timer || timer.id !== decisionID || timer.started || !timer.waitingFor.includes(playerID)
     || state.G.deadlineAt === null || isDeadlineExpired(state, now)
-    || isTrickBeingDisplayed(state, now) || isExtraDealBeingDisplayed(state, now)) return state;
+    || isTrickBeingDisplayed(state, now) || isExtraDealBeingDisplayed(state, now) || isRedealBeingDisplayed(state, now)) return state;
   const seconds = state.G.cubeOffer ? state.G.settings.cubeTimeSeconds : state.G.settings.moveTimeSeconds;
   return {
     ...state,

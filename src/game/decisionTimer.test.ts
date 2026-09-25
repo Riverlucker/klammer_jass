@@ -35,7 +35,7 @@ describe('Anzeigeabhängige Online-Zugfrist', () => {
     expect(started.G.deadlineAt).toBe(16_000);
   });
 
-  it.each(['trickDisplayUntil', 'extraDealUntil'] as const)('startet erst nach %s', (field) => {
+  it.each(['trickDisplayUntil', 'extraDealUntil', 'redealUntil'] as const)('startet erst nach %s', (field) => {
     const pending = readyState();
     pending.G[field] = 7_000;
     const { id, waitingFor: [player] } = pending.G.decisionTimer!;

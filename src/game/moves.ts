@@ -3,6 +3,7 @@ import { INVALID_MOVE } from 'boardgame.io/core';
 import type { Suit } from './constants';
 import { initialGameScores, settleDeclinedCube } from './scoring';
 import { canExchangeTrumpSeven } from './trumpSeven';
+import { canDouble } from './cube';
 import type { JassState, MatchResult, PlayerID } from './types';
 import { isPlayerID, otherPlayer } from './types';
 
@@ -27,7 +28,6 @@ export const acceptOriginal: Move<JassState> = ({ G, ctx, events, playerID }) =>
   if (!isPlayerID(playerID) || G.cubeOffer || G.trumpSelectionPassedCount >= 2) return INVALID_MOVE;
   if (!G.revealedCard || ctx.currentPlayer !== playerID) return INVALID_MOVE;
   selectTrump(G, playerID, 'original', G.revealedCard.suit);
-  allowAfterMoveDouble(G, playerID);
   events.endPhase();
 };
 
@@ -38,10 +38,8 @@ export const decline: Move<JassState> = ({ G, ctx, events, playerID }) => {
     G.redealCount += 1;
     G.dealer = otherPlayer(G.dealer);
     G.vorne = otherPlayer(G.dealer);
-    G.afterMoveDoubleBy = null;
     events.setPhase('deal');
   } else {
-    allowAfterMoveDouble(G, playerID);
     events.endTurn();
   }
 };
@@ -54,10 +52,8 @@ export const announceSmallGame: Move<JassState> = ({ G, ctx, events, playerID })
   G.smallGameAnnounced = true;
   if (G.revealedCard?.suit === 'Clubs') {
     G.smallGameAccepted = true;
-    allowAfterMoveDouble(G, playerID);
     return;
   }
-  allowAfterMoveDouble(G, playerID);
   events.endTurn();
 };
 
@@ -67,7 +63,6 @@ export const acceptSmallGame: Move<JassState> = ({ G, ctx, events, playerID }) =
     ctx.currentPlayer !== G.dealer || playerID !== G.dealer
   ) return INVALID_MOVE;
   G.smallGameAccepted = true;
-  allowAfterMoveDouble(G, playerID);
   events.endTurn();
 };
 
@@ -78,7 +73,6 @@ export const overruleSmallGame: Move<JassState> = ({ G, ctx, events, playerID })
     ctx.currentPlayer !== G.dealer || playerID !== G.dealer
   ) return INVALID_MOVE;
   selectTrump(G, playerID, 'small', 'Clubs');
-  allowAfterMoveDouble(G, playerID);
   events.endPhase();
 };
 
@@ -92,7 +86,6 @@ export const chooseTrump: Move<JassState> = ({ G, ctx, events, playerID }, suit:
   const dealerChoosing = !G.smallGameAnnounced && G.trumpSelectionPassedCount === 3 && playerID === G.dealer;
   if (!acceptedSmallGame && !dealerChoosing) return INVALID_MOVE;
   selectTrump(G, playerID, 'small', suit);
-  allowAfterMoveDouble(G, playerID);
   events.endPhase();
 };
 
@@ -119,12 +112,8 @@ export const doubleCube: Move<JassState> = ({ G, ctx, events, playerID }) => {
     return INVALID_MOVE;
   }
 
-  const offeredBeforeOwnMove = ctx.currentPlayer === playerID;
-  const resumePlayer = offeredBeforeOwnMove ? playerID : ctx.currentPlayer;
-  if (!isPlayerID(resumePlayer)) return INVALID_MOVE;
-  G.cubeOffer = { from: playerID, resumePlayer };
-  G.afterMoveDoubleBy = null;
-  if (offeredBeforeOwnMove) events.endTurn();
+  G.cubeOffer = { from: playerID, resumePlayer: playerID };
+  events.endTurn({ next: otherPlayer(playerID) });
 };
 
 export const acceptCube: Move<JassState> = ({ G, ctx, events, playerID }) => {
@@ -136,7 +125,6 @@ export const acceptCube: Move<JassState> = ({ G, ctx, events, playerID }) => {
   G.cube.value *= 2;
   G.cube.holder = playerID;
   G.cubeOffer = null;
-  G.afterMoveDoubleBy = null;
   if (resumePlayer !== playerID) events.endTurn({ next: resumePlayer });
 };
 
@@ -156,7 +144,6 @@ export const declineCube: Move<JassState> = ({ G, ctx, events, playerID }) => {
   G.gameResult = settled.gameResult;
   G.matchPoints = settled.nextMatchPoints;
   G.cubeOffer = null;
-  G.afterMoveDoubleBy = null;
   G.nextGamePlayers = [];
   events.setPhase('endOfGame');
 };
@@ -167,21 +154,7 @@ export const nextGame: Move<JassState> = ({ G, events, playerID }) => {
   }
   if (!G.nextGamePlayers.includes(playerID)) G.nextGamePlayers.push(playerID);
   if (G.nextGamePlayers.length === 2) {
-    G.dealer = G.lastHandResult?.dealerForNextHand ?? G.gameResult.winner ?? G.dealer;
-    G.scores = initialGameScores(G.settings.handicap);
-    G.gameNumber += 1;
-    G.handNumber = 1;
-    G.redealCount = 0;
-    G.gameResult = null;
-    G.lastHandResult = null;
-    G.cube = { value: 1, holder: null };
-    G.cubeOffer = null;
-    G.afterMoveDoubleBy = null;
-    G.nextGamePlayers = [];
-    G.readyPlayers = [];
-    G.matchPaused = false;
-    G.resumePlayers = [];
-    G.vorne = otherPlayer(G.dealer);
+    startNextGame(G);
     events.endPhase();
   }
 };
@@ -210,35 +183,30 @@ export const pauseMatch: Move<JassState> = ({ G }) => {
   G.deadlineAt = null;
 };
 
-export const resumeMatch: Move<JassState> = ({ G, playerID }) => {
-  if (!isPlayerID(playerID) || !G.matchPaused || G.matchResult) return INVALID_MOVE;
+export const resumeMatch: Move<JassState> = ({ G, events, playerID }) => {
+  if (!isPlayerID(playerID) || !G.matchPaused || !G.gameResult || G.matchResult) return INVALID_MOVE;
   if (!G.resumePlayers.includes(playerID)) G.resumePlayers.push(playerID);
   if (G.resumePlayers.length === 2) {
-    G.matchPaused = false;
-    G.resumePlayers = [];
+    startNextGame(G);
+    events.endPhase();
   }
 };
 
-export function allowAfterMoveDouble(G: JassState, playerID: PlayerID) {
-  G.afterMoveDoubleBy = G.settings.cubeEnabled ? playerID : null;
-}
-
-export function canDouble(
-  G: JassState,
-  phase: string | null,
-  currentPlayer: string,
-  playerID: PlayerID,
-): boolean {
-  const phaseAllowsCube = phase === 'trumpSelection' || phase === 'playing';
-  const hasOpportunity = currentPlayer === playerID || G.afterMoveDoubleBy === playerID;
-  return Boolean(
-    phaseAllowsCube &&
-      G.settings.cubeEnabled &&
-      !G.cubeOffer &&
-      !G.gameResult &&
-      hasOpportunity &&
-      (G.cube.holder === null || G.cube.holder === playerID),
-  );
+function startNextGame(G: JassState) {
+  G.dealer = G.lastHandResult?.dealerForNextHand ?? G.gameResult?.winner ?? G.dealer;
+  G.scores = initialGameScores(G.settings.handicap);
+  G.gameNumber += 1;
+  G.handNumber = 1;
+  G.redealCount = 0;
+  G.gameResult = null;
+  G.lastHandResult = null;
+  G.cube = { value: 1, holder: null };
+  G.cubeOffer = null;
+  G.nextGamePlayers = [];
+  G.readyPlayers = [];
+  G.matchPaused = false;
+  G.resumePlayers = [];
+  G.vorne = otherPlayer(G.dealer);
 }
 
 function selectTrump(G: JassState, declarer: PlayerID, contract: 'original' | 'small', suit: Suit) {
