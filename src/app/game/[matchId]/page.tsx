@@ -283,8 +283,8 @@ function GameTable({ matchId }: { matchId: string }) {
 
           <div className={styles.center}>
             <div className={styles.tableScene}>
-              {G.settings.cubeEnabled && G.cube.holder === null && (
-                <div className={styles.centerCube} title="Würfel in der Mitte – beide Spieler dürfen in ihrem Zug drehen">
+              {G.cube.holder == null && (
+                <div className={styles.centerCube} title={G.settings.cubeEnabled ? 'Würfel in der Mitte – beide Spieler dürfen in ihrem Zug drehen' : `Würfelwert ${G.cube.value} – Drehen ist für dieses Match ausgeschaltet`}>
                   <CubeFace value={G.cube.value} label={`Würfel ${G.cube.value}, in der Mitte`} />
                 </div>
               )}
@@ -310,13 +310,6 @@ function GameTable({ matchId }: { matchId: string }) {
           </div>
 
           <section className={styles.playerArea} aria-label="Deine Hand">
-            {canDouble && !G.cubeOffer && (
-              <div className={styles.playerActions}>
-                <button className={`button ${styles.cubeButton}`} type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>
-                  Drehen <CubeFace value={G.cube.value * 2} />
-                </button>
-              </div>
-            )}
             <div className={styles.playerActionField}>
             {redealActive ? (
               <StatusCard title="Es wird neu gegeben" detail="Neue Karten werden verteilt. Danach beginnt die Trumpfwahl." />
@@ -343,6 +336,13 @@ function GameTable({ matchId }: { matchId: string }) {
                   <HandEnd G={G} playerId={playerId} isSending={isSending} onReady={() => void dispatchMove('nextHand')} deadline={deadline} />
                 )}
               </>
+            )}
+            {canDouble && !G.cubeOffer && (
+              <div className={styles.playerActions}>
+                <button className={`button ${styles.cubeButton}`} type="button" disabled={isSending} onClick={() => void dispatchMove('doubleCube')}>
+                  Drehen <CubeFace value={G.cube.value * 2} />
+                </button>
+              </div>
             )}
             </div>
             <div className={styles.playerCardsRow}>
