@@ -218,7 +218,7 @@ function GameTable({ matchId }: { matchId: string }) {
         <nav className={styles.mobileControls} aria-label="Tischansicht">
           <button ref={scoreToggle} type="button" aria-expanded={mobilePanel === 'score'} aria-controls="table-score" onClick={() => setMobilePanel(mobilePanel === 'score' ? null : 'score')}>Spielinfo</button>
           {!gameOver && ctx.phase !== 'waitingRoom' && <button ref={chatToggle} type="button" aria-expanded={mobilePanel === 'chat'} aria-controls="table-chat" onClick={() => setMobilePanel(mobilePanel === 'chat' ? null : 'chat')}>Chat</button>}
-          <span>Spiel {G.gameNumber} · Hand {G.handNumber}</span>
+          <span>Spiel {G.gameNumber} · Hand {G.handNumber} · bis {G.settings.targetScore}</span>
         </nav>
         <div id="table-score" className={styles.headerDetails} data-open={mobilePanel === 'score'}>
           <button type="button" className={styles.panelClose} onClick={closeMobilePanel} aria-label="Spielinfo schließen">×</button>
@@ -270,6 +270,7 @@ function GameTable({ matchId }: { matchId: string }) {
           <OpponentArea
             name={gamePlayerName(G, opponentId)}
             score={G.scores[opponentId]}
+            matchPoints={G.matchPoints[opponentId]}
             cubeValue={G.settings.cubeEnabled && G.cube.holder === opponentId ? G.cube.value : undefined}
             dealing={redealActive}
             count={G.handCounts[opponentId]}
@@ -345,7 +346,7 @@ function GameTable({ matchId }: { matchId: string }) {
             )}
             </div>
             <div className={styles.playerCardsRow}>
-              <PlayerIdentity name={gamePlayerName(G, playerId)} score={G.scores[playerId]} owner="self" cubeValue={G.settings.cubeEnabled && G.cube.holder === playerId ? G.cube.value : undefined} speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
+              <PlayerIdentity name={gamePlayerName(G, playerId)} score={G.scores[playerId]} matchPoints={G.matchPoints[playerId]} owner="self" cubeValue={G.settings.cubeEnabled && G.cube.holder === playerId ? G.cube.value : undefined} speech={avatarSpeech?.playerId === playerId ? avatarSpeech : null} />
               <div className={styles.hand} style={{ '--hand-gaps': Math.max(1, fullHand.length - 1) } as CSSProperties}>
                 {hand.map((card, index) => {
                   if (redealActive) return (
@@ -1054,11 +1055,11 @@ function TimeoutNotice({ deadline, children }: { deadline: DeadlineInfo; childre
   );
 }
 
-function OpponentArea({ name, score, cubeValue, count, tricks, speech, revealedCards, inspectedTrick, onInspect, dealing }: { name: string; score: number; cubeValue?: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void; dealing: boolean }) {
+function OpponentArea({ name, score, matchPoints, cubeValue, count, tricks, speech, revealedCards, inspectedTrick, onInspect, dealing }: { name: string; score: number; matchPoints: number; cubeValue?: number; count: number; tricks: number; speech: AvatarSpeech | null; revealedCards: Card[]; inspectedTrick: Trick | null; onInspect?: () => void; dealing: boolean }) {
   return (
     <section className={styles.opponent}>
       <div className={styles.opponentCardsRow}>
-        <PlayerIdentity name={name} score={score} owner="opponent" speech={speech} cubeValue={cubeValue} />
+        <PlayerIdentity name={name} score={score} matchPoints={matchPoints} owner="opponent" speech={speech} cubeValue={cubeValue} />
         <div className={styles.cardBacks}>{Array.from({ length: count }, (_, index) => {
           const card = revealedCards[index];
           return card
@@ -1097,12 +1098,15 @@ function CubeFace({ value, label = `Würfel ${value}` }: { value: number; label?
   );
 }
 
-function PlayerIdentity({ name, score, owner, speech = null, cubeValue }: { name: string; score: number; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null; cubeValue?: number }) {
+function PlayerIdentity({ name, score, matchPoints, owner, speech = null, cubeValue }: { name: string; score: number; matchPoints: number; owner: 'self' | 'opponent'; speech?: AvatarSpeech | null; cubeValue?: number }) {
   return (
     <div className={styles.playerIdentity} data-owner={owner}>
       {speech && <AvatarSpeechBubble speech={speech} />}
       <PlayerAvatar name={name} />
-      <span className={styles.avatarScore} aria-label={`${name}: ${score} Punkte`}><b>{score}</b></span>
+      <span className={styles.avatarScore} aria-label={`${name}: ${score} Augen, ${matchPoints} Matchpunkte`}>
+        <b title="Augen">{score}</b>
+        <small title="Matchpunkte">{matchPoints}</small>
+      </span>
       <div className={styles.playerCaption}>
         {cubeValue !== undefined && <span className={styles.heldCube} title={`${name} hat den Würfel und darf im eigenen Zug erneut drehen`}><CubeFace value={cubeValue} label={`Würfel ${cubeValue}, bei ${name}`} /></span>}
         <strong>{name}</strong>

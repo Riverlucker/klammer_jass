@@ -34,8 +34,9 @@
 .opponent { padding-top: 10px; }
 .playerIdentity { position: relative; z-index: 10; display: grid; grid-template-columns: 118px minmax(0, 1fr); width: 168px; min-width: 0; justify-items: center; align-self: end; gap: 6px 0; }
 .playerCaption { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-width: 0; }
-.avatarScore { display: grid; align-self: center; justify-self: start; color: var(--gold); font-variant-numeric: tabular-nums; }
+.avatarScore { display: grid; align-self: start; justify-self: start; gap: 4px; padding-top: 24px; color: var(--gold); font-variant-numeric: tabular-nums; }
 .avatarScore b { font-size: 2.1rem; line-height: 1; letter-spacing: -.06em; }
+.avatarScore small { color: #91d9d4; font-size: 1.35rem; font-weight: 750; line-height: 1; }
 .cubeFace { display: inline-block; flex-shrink: 0; width: 40px; height: 40px; vertical-align: middle; filter: drop-shadow(0 3px 3px rgba(0,0,0,.3)); }
 .cubeButton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .cubeButton .cubeFace, .heldCube .cubeFace { width: 28px; height: 28px; }
@@ -385,6 +386,8 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
   .playerIdentity { width: 76px; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 0; align-self: center; }
   .playerAvatar { width: 40px; height: 40px; }
   .avatarScore b { font-size: 1.44rem; }
+  .avatarScore { gap: 3px; padding-top: 1px; }
+  .avatarScore small { font-size: .95rem; }
   .heldCube .cubeFace { width: 24px; height: 24px; }
   .playerCaption { gap: 3px; }
   .centerCube { top: 40px; }
@@ -462,7 +465,10 @@ button.card:disabled { cursor: not-allowed; opacity: 1; filter: brightness(.68) 
 }
 
 @media (max-width: 380px) {
-  .mobileControls > span { display: none; }
+  .header { height: 64px; }
+  .mobileControls { flex-wrap: wrap; gap: 2px 5px; }
+  .mobileControls > span { flex-basis: 100%; }
+  .table { height: calc(100dvh - 86px - env(safe-area-inset-bottom)); }
   .hand .card { flex-basis: 54px; width: 54px; height: 81px; margin-right: calc(var(--card-step) - 54px); }
   .hand { --card-step: clamp(16px, calc((100cqw - 54px) / var(--hand-gaps)), 38px); }
 }
